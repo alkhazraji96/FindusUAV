@@ -22,17 +22,29 @@ Partial Class Form1
     'Do not modify it using the code editor.
     <System.Diagnostics.DebuggerStepThrough()> _
     Private Sub InitializeComponent()
+        Me.btnCATIA = New System.Windows.Forms.Button()
         Me.SuspendLayout()
+        '
+        'btnCATIA
+        '
+        Me.btnCATIA.Location = New System.Drawing.Point(145, 224)
+        Me.btnCATIA.Name = "btnCATIA"
+        Me.btnCATIA.Size = New System.Drawing.Size(144, 74)
+        Me.btnCATIA.TabIndex = 0
+        Me.btnCATIA.Text = "TEST CATIA"
+        Me.btnCATIA.UseVisualStyleBackColor = True
         '
         'Form1
         '
         Me.AutoScaleDimensions = New System.Drawing.SizeF(8.0!, 16.0!)
         Me.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font
         Me.ClientSize = New System.Drawing.Size(800, 450)
+        Me.Controls.Add(Me.btnCATIA)
         Me.Name = "Form1"
-        Me.Text = "Form1"
+        Me.Text = "Findus UAV"
         Me.ResumeLayout(False)
 
     End Sub
 
+    Friend WithEvents btnCATIA As Button
 End Class
