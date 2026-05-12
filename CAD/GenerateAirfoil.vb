@@ -21,8 +21,50 @@ Public Class GenerateAirfoil
     End Sub
 
     Public Shared Sub Run()
-        CreateWingStage2AirfoilStations()
+        CreateWingStage3OuterWingSkin()
     End Sub
+
+    Public Shared Function CreateWingStage3OuterWingSkin() As Object
+        Dim catiaApplication As Object = GetOrCreateCatiaApplication()
+        catiaApplication.Visible = True
+
+        Dim partDocument As Object = catiaApplication.Documents.Add("Part")
+        TrySetPartNumber(partDocument, "Stage_3_Tapered_Wing_Outer_Skin")
+
+        Dim part As Object = partDocument.Part
+        TrySetName(part, "Stage_3_Tapered_Wing_Outer_Skin")
+
+        Dim hybridBodies As Object = part.HybridBodies
+
+        Dim planformSet As Object = hybridBodies.Add()
+        TrySetName(planformSet, "Stage 3 - Planform and Rib Stations")
+
+        Dim airfoilSet As Object = hybridBodies.Add()
+        TrySetName(airfoilSet, "Stage 3 - NACA 4415 Station Profiles")
+
+        Dim skinSet As Object = hybridBodies.Add()
+        TrySetName(skinSet, "Stage 3 - Outer Wing Skin")
+
+        Dim hybridShapeFactory As Object = part.HybridShapeFactory
+
+        AddStagePlanformGeometry(part, hybridShapeFactory, planformSet)
+
+        Dim stationProfiles As New List(Of WingStationProfile)()
+
+        For Each station As WingStation In BuildWingStations()
+            stationProfiles.Add(AddWingAirfoilStationProfile(part, hybridShapeFactory, airfoilSet, station))
+        Next
+
+        Dim outerSkin As Object = CreateOuterWingSkinFromProfiles(part,
+                                                                  hybridShapeFactory,
+                                                                  skinSet,
+                                                                  stationProfiles)
+        TrySetInWorkObject(part, outerSkin)
+        part.Update()
+        TryReframe(catiaApplication)
+
+        Return partDocument
+    End Function
 
     Public Shared Function CreateWingStage2AirfoilStations() As Object
         Dim catiaApplication As Object = GetOrCreateCatiaApplication()
@@ -158,10 +200,10 @@ Public Class GenerateAirfoil
         Return stations
     End Function
 
-    Private Shared Sub AddWingAirfoilStationProfile(ByVal part As Object,
-                                                    ByVal hybridShapeFactory As Object,
-                                                    ByVal targetSet As Object,
-                                                    ByVal station As WingStation)
+    Private Shared Function AddWingAirfoilStationProfile(ByVal part As Object,
+                                                         ByVal hybridShapeFactory As Object,
+                                                         ByVal targetSet As Object,
+                                                         ByVal station As WingStation) As WingStationProfile
         Dim chordLength As Double = GetWingChordAtSpanPosition(station.SpanPosition)
 
         Dim airfoilCoordinates As List(Of AirfoilCoordinate) =
@@ -175,6 +217,7 @@ Public Class GenerateAirfoil
         Dim profileSpline As Object = hybridShapeFactory.AddNewSpline()
         TrySetSplineOptions(profileSpline, True)
         TrySetName(profileSpline, station.Name & " profile")
+        Dim closingPointReference As Object = Nothing
 
         For pointIndex As Integer = 0 To airfoilCoordinates.Count - 1
             Dim coordinate As AirfoilCoordinate = airfoilCoordinates(pointIndex)
@@ -184,10 +227,55 @@ Public Class GenerateAirfoil
             TrySetName(airfoilPoint, station.Name & "_P" & (pointIndex + 1).ToString("000"))
             targetSet.AppendHybridShape(airfoilPoint)
 
-            profileSpline.AddPoint(part.CreateReferenceFromObject(airfoilPoint))
+            Dim pointReference As Object = part.CreateReferenceFromObject(airfoilPoint)
+
+            If pointIndex = 0 Then
+                closingPointReference = pointReference
+            End If
+
+            profileSpline.AddPoint(pointReference)
         Next
 
         targetSet.AppendHybridShape(profileSpline)
+
+        Return New WingStationProfile(station.Name, profileSpline, closingPointReference)
+    End Function
+
+    Private Shared Function CreateOuterWingSkinFromProfiles(ByVal part As Object,
+                                                            ByVal hybridShapeFactory As Object,
+                                                            ByVal targetSet As Object,
+                                                            ByVal stationProfiles As List(Of WingStationProfile)) As Object
+        If stationProfiles.Count < 2 Then
+            Throw New InvalidOperationException("At least two airfoil station profiles are required to create the wing skin.")
+        End If
+
+        Dim outerSkinLoft As Object = hybridShapeFactory.AddNewLoft()
+        TrySetName(outerSkinLoft, "NACA 4415 outer wing skin")
+        TrySetLoftOptions(outerSkinLoft)
+
+        For Each stationProfile As WingStationProfile In stationProfiles
+            Dim profileReference As Object = part.CreateReferenceFromObject(stationProfile.ProfileSpline)
+            AddLoftSection(outerSkinLoft, profileReference, stationProfile.ClosingPointReference)
+        Next
+
+        targetSet.AppendHybridShape(outerSkinLoft)
+        TryUpdateObject(part, outerSkinLoft)
+
+        Return outerSkinLoft
+    End Function
+
+    Private Shared Sub AddLoftSection(ByVal loft As Object,
+                                      ByVal profileReference As Object,
+                                      ByVal closingPointReference As Object)
+        Try
+            loft.AddSectionToLoft(profileReference, 1, closingPointReference)
+        Catch
+            Try
+                loft.AddSectionToLoft(profileReference, 1, Nothing)
+            Catch
+                loft.AddSectionToLoft(profileReference, 1)
+            End Try
+        End Try
     End Sub
 
     Private Shared Function BuildNacaCoordinates(ByVal chordLength As Double,
@@ -522,6 +610,23 @@ Public Class GenerateAirfoil
         End Try
     End Sub
 
+    Private Shared Sub TrySetLoftOptions(ByVal loft As Object)
+        Try
+            loft.SectionCoupling = 1
+        Catch
+        End Try
+
+        Try
+            loft.Relimitation = 1
+        Catch
+        End Try
+
+        Try
+            loft.CanonicalDetection = 2
+        Catch
+        End Try
+    End Sub
+
     Private Shared Sub TrySetName(ByVal catiaObject As Object, ByVal name As String)
         Try
             catiaObject.Name = name
@@ -571,6 +676,20 @@ Public Class GenerateAirfoil
         Public Sub New(ByVal name As String, ByVal spanPosition As Double)
             Me.Name = name
             Me.SpanPosition = spanPosition
+        End Sub
+    End Structure
+
+    Private Structure WingStationProfile
+        Public ReadOnly Name As String
+        Public ReadOnly ProfileSpline As Object
+        Public ReadOnly ClosingPointReference As Object
+
+        Public Sub New(ByVal name As String,
+                       ByVal profileSpline As Object,
+                       ByVal closingPointReference As Object)
+            Me.Name = name
+            Me.ProfileSpline = profileSpline
+            Me.ClosingPointReference = closingPointReference
         End Sub
     End Structure
 

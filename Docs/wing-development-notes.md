@@ -18,7 +18,7 @@ The UI is not meant to contain CAD logic. The button handler should only call:
 GenerateAirfoil.Run()
 ```
 
-At the time of this note, `Run()` calls the Stage 2 wing station generator.
+At the time of this note, `Run()` calls the Stage 3 outer wing skin generator.
 
 ## Current Implementation
 
@@ -26,9 +26,10 @@ At the time of this note, `Run()` calls the Stage 2 wing station generator.
 
 - Stage 1 planform and rib station generation.
 - Stage 2 NACA 4415 airfoil station profile generation.
+- Stage 3 outer wing skin surface generation.
 - A previous standalone `CreateNaca2412Part` helper that can generate a 3 mm padded NACA 2412 test slice.
 
-The active workflow is Stage 2.
+The active workflow is Stage 3.
 
 ## Wing Concept
 
@@ -137,19 +138,30 @@ Current behavior:
 - Uses local chord length based on span position.
 - Places each profile in an X-Z airfoil plane at its Y station.
 
-Current `Run()` target:
+## Stage 3: Outer Wing Skin
 
-```vb
-CreateWingStage2AirfoilStations()
-```
-
-## Next Intended Stages
-
-Stage 3 should create the outer wing skin:
+Stage 3 creates the outer wing skin:
 
 - Use the 29 NACA 4415 station profiles.
 - Create a CATIA Multi-Section Surface through those profiles.
 - Keep the skin as a surface with no thickness for now.
+
+Current behavior:
+
+- Creates a new CATIA Part.
+- Creates a geometrical set for planform and rib station lines.
+- Creates a geometrical set for NACA 4415 station profiles.
+- Creates a geometrical set for the outer wing skin.
+- Builds one lofted outer skin surface through the 29 profiles.
+- Uses a consistent profile closing point to help CATIA align the loft sections.
+
+Current `Run()` target:
+
+```vb
+CreateWingStage3OuterWingSkin()
+```
+
+## Next Intended Stage
 
 Stage 4 should create physical ribs:
 
@@ -161,7 +173,7 @@ Spars and cutouts are intentionally deferred until after the skin and ribs are s
 
 ## Verification Checklist
 
-When running the current Stage 2 code in CATIA, verify:
+When running the current Stage 3 code in CATIA, verify:
 
 - Full span is 3543.65 mm.
 - Center chord is 586 mm.
@@ -171,3 +183,5 @@ When running the current Stage 2 code in CATIA, verify:
 - There are 29 rib stations.
 - Every station profile is NACA 4415.
 - Profiles are oriented with span along Y and thickness along Z.
+- One outer wing skin surface is created through all 29 profiles.
+- The skin has no solid thickness yet.
