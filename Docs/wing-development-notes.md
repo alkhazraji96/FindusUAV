@@ -4,12 +4,19 @@ Date: 2026-05-12
 
 This note records the CATIA V5 / VB.NET wing-generation design and implementation state. It is intended as a handoff document for future AI agents or team members.
 
-## Current Code Location
+## Current Code Organization
 
-The active CAD generation work is in:
+The CAD generation code is split across focused files in the `CAD` folder:
 
 ```text
-CAD/GenerateAirfoil.vb
+CAD/GenerateAirfoil.vb          Public facade used by the UI button
+CAD/WingGenerator.vb            Stage 1, Stage 2, and Stage 3 wing generation
+CAD/WingDefinition.vb           Wing dimensions, rib count, and NACA 4415 constants
+CAD/WingStation.vb              Wing station/profile data structures
+CAD/NacaAirfoil.vb              General NACA 4-digit coordinate generation
+CAD/AirfoilCoordinate.vb        Airfoil coordinate data structure
+CAD/CatiaInterop.vb             CATIA COM helper functions
+CAD/Naca2412SliceGenerator.vb   Previous standalone 3 mm NACA 2412 test slice
 ```
 
 The UI is not meant to contain CAD logic. The button handler should only call:
@@ -24,10 +31,9 @@ At the time of this note, `Run()` calls the Stage 3 outer wing skin generator.
 
 `GenerateAirfoil.vb` currently contains:
 
-- Stage 1 planform and rib station generation.
-- Stage 2 NACA 4415 airfoil station profile generation.
-- Stage 3 outer wing skin surface generation.
-- A previous standalone `CreateNaca2412Part` helper that can generate a 3 mm padded NACA 2412 test slice.
+- Public entry points only.
+- `Run()`, which delegates to Stage 3.
+- Compatibility wrappers for Stage 1, Stage 2, Stage 3, and the NACA 2412 test slice.
 
 The active workflow is Stage 3.
 
