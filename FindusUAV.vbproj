@@ -870,7 +870,7 @@
     </COMReference>
   </ItemGroup>
   <ItemGroup>
-    <Folder Include="CAD\" />
+    <Folder Include="Docs\" />
     <Folder Include="Models\" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.VisualBasic.targets" />
