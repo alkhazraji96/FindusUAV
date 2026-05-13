@@ -54,6 +54,71 @@ Friend Module WingGenerator
         Return partDocument
     End Function
 
+    Friend Function CreateStage4BPhysicalRibsAndMainSpar() As Object
+        Dim catiaApplication As Object = GetOrCreateCatiaApplication()
+        catiaApplication.Visible = True
+
+        Dim partDocument As Object = catiaApplication.Documents.Add("Part")
+        TrySetPartNumber(partDocument, "Stage_4B_Tapered_Wing_Ribs_And_Main_Spar")
+
+        Dim part As Object = partDocument.Part
+        TrySetName(part, "Stage_4B_Tapered_Wing_Ribs_And_Main_Spar")
+
+        Dim hybridBodies As Object = part.HybridBodies
+
+        Dim planformSet As Object = hybridBodies.Add()
+        TrySetName(planformSet, "Stage 4B - Planform and Rib Stations")
+
+        Dim airfoilSet As Object = hybridBodies.Add()
+        TrySetName(airfoilSet, "Stage 4B - NACA 4415 Station Profiles")
+
+        Dim skinSet As Object = hybridBodies.Add()
+        TrySetName(skinSet, "Stage 4B - Outer Wing Skin")
+
+        Dim ribPlaneSet As Object = hybridBodies.Add()
+        TrySetName(ribPlaneSet, "Stage 4B - Rib Mid-Planes")
+
+        Dim sparReferenceSet As Object = hybridBodies.Add()
+        TrySetName(sparReferenceSet, "Stage 4B - Main Spar References")
+
+        Dim hybridShapeFactory As Object = part.HybridShapeFactory
+        Dim shapeFactory As Object = part.ShapeFactory
+        Dim stations As List(Of WingStation) = BuildStations()
+
+        AddPlanformGeometry(part, hybridShapeFactory, planformSet)
+
+        Dim stationProfiles As New List(Of WingStationProfile)()
+
+        For Each station As WingStation In stations
+            stationProfiles.Add(AddAirfoilStationProfile(part, hybridShapeFactory, airfoilSet, station))
+        Next
+
+        Dim outerSkin As Object = CreateOuterWingSkinFromProfiles(part,
+                                                                  hybridShapeFactory,
+                                                                  skinSet,
+                                                                  stationProfiles)
+
+        For Each station As WingStation In stations
+            AddPhysicalRibBody(part,
+                               hybridShapeFactory,
+                               shapeFactory,
+                               ribPlaneSet,
+                               station,
+                               True)
+        Next
+
+        Dim mainSpar As Object = AddMainSparBody(part,
+                                                 hybridShapeFactory,
+                                                 shapeFactory,
+                                                 sparReferenceSet)
+
+        TrySetInWorkObject(part, mainSpar)
+        RequireUpdatePart(part, "Stage 4B wing with physical ribs and main spar")
+        TryReframe(catiaApplication)
+
+        Return partDocument
+    End Function
+
     Friend Function CreateStage3OuterWingSkin() As Object
         Dim catiaApplication As Object = GetOrCreateCatiaApplication()
         catiaApplication.Visible = True
@@ -307,13 +372,18 @@ Friend Module WingGenerator
                                    ByVal hybridShapeFactory As Object,
                                    ByVal shapeFactory As Object,
                                    ByVal ribPlaneSet As Object,
-                                   ByVal station As WingStation)
+                                   ByVal station As WingStation,
+                                   Optional ByVal includeMainSparCutout As Boolean = False)
         Dim ribBody As Object = part.Bodies.Add()
         TrySetName(ribBody, station.Name & " 3 mm rib")
         TrySetInWorkObject(part, ribBody)
 
         Dim ribPlane As Object = CreateRibMidPlane(part, hybridShapeFactory, ribPlaneSet, station)
-        Dim ribSketch As Object = CreateRibProfileSketch(part, ribBody, ribPlane, station)
+        Dim ribSketch As Object = CreateRibProfileSketch(part,
+                                                         ribBody,
+                                                         ribPlane,
+                                                         station,
+                                                         includeMainSparCutout)
         Dim ribPad As Object = CreateRibPad(part, ribBody, shapeFactory, ribSketch, station.Name)
 
         TrySetName(ribPad, station.Name & " 3 mm centered rib")
@@ -344,7 +414,8 @@ Friend Module WingGenerator
     Private Function CreateRibProfileSketch(ByVal part As Object,
                                             ByVal ribBody As Object,
                                             ByVal ribPlane As Object,
-                                            ByVal station As WingStation) As Object
+                                            ByVal station As WingStation,
+                                            ByVal includeMainSparCutout As Boolean) As Object
         Dim chordLength As Double = WingDefinition.GetChordAtSpanPosition(station.SpanPosition)
 
         Dim airfoilCoordinates As List(Of AirfoilCoordinate) =
@@ -367,12 +438,66 @@ Friend Module WingGenerator
 
         CreateSmoothClosedRibSketchProfile(sketchFactory, sketchCoordinates)
 
+        If includeMainSparCutout Then
+            CreateMainSparCutoutSketchProfile(sketchFactory, station, sketchAxis)
+        End If
+
         ribSketch.CloseEdition()
         RequireUpdateObject(part, ribSketch, station.Name & " rib sketch")
         RequireUpdatePart(part, station.Name & " rib sketch")
 
         Return ribSketch
     End Function
+
+    Private Sub CreateMainSparCutoutSketchProfile(ByVal sketchFactory As Object,
+                                                  ByVal station As WingStation,
+                                                  ByVal sketchAxis As SketchAxisData)
+        Dim sparCenter As AirfoilCoordinate =
+            ConvertGlobalPointToSketchPoint(WingDefinition.GetMainSparCenterXAtSpanPosition(station.SpanPosition),
+                                            station.SpanPosition,
+                                            WingDefinition.GetMainSparCenterZAtSpanPosition(station.SpanPosition),
+                                            sketchAxis)
+
+        CreateSketchCircle(sketchFactory,
+                           sparCenter,
+                           WingDefinition.MainSparCutoutDiameter / 2.0)
+    End Sub
+
+    Private Sub CreateSketchCircle(ByVal sketchFactory As Object,
+                                   ByVal centerPoint As AirfoilCoordinate,
+                                   ByVal radius As Double)
+        Try
+            sketchFactory.CreateClosedCircle(centerPoint.X, centerPoint.Y, radius)
+            Return
+        Catch
+        End Try
+
+        CreatePolygonCircleSketchProfile(sketchFactory, centerPoint, radius, 48)
+    End Sub
+
+    Private Sub CreatePolygonCircleSketchProfile(ByVal sketchFactory As Object,
+                                                 ByVal centerPoint As AirfoilCoordinate,
+                                                 ByVal radius As Double,
+                                                 ByVal segmentCount As Integer)
+        If segmentCount < 12 Then
+            segmentCount = 12
+        End If
+
+        Dim circlePoints As New List(Of AirfoilCoordinate)()
+
+        For pointIndex As Integer = 0 To segmentCount - 1
+            Dim angle As Double = (2.0 * Math.PI * CDbl(pointIndex)) / CDbl(segmentCount)
+            circlePoints.Add(New AirfoilCoordinate(centerPoint.X + (Math.Cos(angle) * radius),
+                                                   centerPoint.Y + (Math.Sin(angle) * radius)))
+        Next
+
+        For pointIndex As Integer = 0 To circlePoints.Count - 1
+            Dim nextIndex As Integer = (pointIndex + 1) Mod circlePoints.Count
+            CreateSketchLineIfDistinct(sketchFactory,
+                                       circlePoints(pointIndex),
+                                       circlePoints(nextIndex))
+        Next
+    End Sub
 
     Private Function CreateSketchOnPlane(ByVal part As Object,
                                          ByVal sketches As Object,
@@ -472,6 +597,153 @@ Friend Module WingGenerator
         End Try
     End Function
 
+    Private Function AddMainSparBody(ByVal part As Object,
+                                      ByVal hybridShapeFactory As Object,
+                                      ByVal shapeFactory As Object,
+                                      ByVal sparReferenceSet As Object) As Object
+        If WingDefinition.MainSparInnerDiameter <= 0.0 Then
+            Throw New InvalidOperationException("The main spar wall thickness leaves no hollow inside diameter.")
+        End If
+
+        Dim sparBody As Object = part.Bodies.Add()
+        TrySetName(sparBody, "Main spar 30 percent chord hollow tube")
+        TrySetInWorkObject(part, sparBody)
+
+        Dim profileSketch As Object = CreateMainSparProfileSketch(part, sparBody)
+
+        Dim rightPath As Object = CreateMainSparPathLine(part,
+                                                         hybridShapeFactory,
+                                                         sparReferenceSet,
+                                                         "Right main spar 30 percent chord path",
+                                                         0.0,
+                                                         WingDefinition.HalfSpan)
+        Dim leftPath As Object = CreateMainSparPathLine(part,
+                                                        hybridShapeFactory,
+                                                        sparReferenceSet,
+                                                        "Left main spar 30 percent chord path",
+                                                        0.0,
+                                                        -WingDefinition.HalfSpan)
+
+        CreateMainSparRibFeature(part,
+                                 shapeFactory,
+                                 sparBody,
+                                 profileSketch,
+                                 rightPath,
+                                 "Right main spar hollow tube")
+        CreateMainSparRibFeature(part,
+                                 shapeFactory,
+                                 sparBody,
+                                 profileSketch,
+                                 leftPath,
+                                 "Left main spar hollow tube")
+
+        RequireUpdatePart(part, "main spar hollow tube")
+
+        Return sparBody
+    End Function
+
+    Private Function CreateMainSparProfileSketch(ByVal part As Object,
+                                                 ByVal sparBody As Object) As Object
+        Dim sketches As Object = sparBody.Sketches
+        Dim centerPlane As Object = part.OriginElements.PlaneZX
+        Dim profileSketch As Object = CreateSketchOnPlane(part, sketches, centerPlane)
+        TrySetName(profileSketch, "Main spar hollow tube profile")
+        TrySetInWorkObject(part, profileSketch)
+
+        Dim sketchAxis As SketchAxisData = GetSketchAxisData(profileSketch, 0.0)
+        Dim sketchFactory As Object = profileSketch.OpenEdition()
+        Dim sparCenter As AirfoilCoordinate =
+            ConvertGlobalPointToSketchPoint(WingDefinition.GetMainSparCenterXAtSpanPosition(0.0),
+                                            0.0,
+                                            WingDefinition.GetMainSparCenterZAtSpanPosition(0.0),
+                                            sketchAxis)
+
+        CreateSketchCircle(sketchFactory,
+                           sparCenter,
+                           WingDefinition.MainSparOuterDiameter / 2.0)
+        CreateSketchCircle(sketchFactory,
+                           sparCenter,
+                           WingDefinition.MainSparInnerDiameter / 2.0)
+
+        profileSketch.CloseEdition()
+        RequireUpdateObject(part, profileSketch, "main spar hollow tube profile")
+        RequireUpdatePart(part, "main spar hollow tube profile")
+
+        Return profileSketch
+    End Function
+
+    Private Function CreateMainSparPathLine(ByVal part As Object,
+                                            ByVal hybridShapeFactory As Object,
+                                            ByVal targetSet As Object,
+                                            ByVal pathName As String,
+                                            ByVal startSpanPosition As Double,
+                                            ByVal endSpanPosition As Double) As Object
+        Dim startPoint As Object = CreateMainSparPathPoint(part,
+                                                           hybridShapeFactory,
+                                                           targetSet,
+                                                           pathName & " start",
+                                                           startSpanPosition)
+        Dim endPoint As Object = CreateMainSparPathPoint(part,
+                                                         hybridShapeFactory,
+                                                         targetSet,
+                                                         pathName & " end",
+                                                         endSpanPosition)
+
+        Dim startReference As Object = part.CreateReferenceFromObject(startPoint)
+        Dim endReference As Object = part.CreateReferenceFromObject(endPoint)
+        Dim sparPath As Object = hybridShapeFactory.AddNewLinePtPt(startReference, endReference)
+        TrySetName(sparPath, pathName)
+        targetSet.AppendHybridShape(sparPath)
+        RequireUpdateObject(part, sparPath, pathName)
+
+        Return sparPath
+    End Function
+
+    Private Function CreateMainSparPathPoint(ByVal part As Object,
+                                             ByVal hybridShapeFactory As Object,
+                                             ByVal targetSet As Object,
+                                             ByVal pointName As String,
+                                             ByVal spanPosition As Double) As Object
+        Dim sparPoint As Object =
+            hybridShapeFactory.AddNewPointCoord(WingDefinition.GetMainSparCenterXAtSpanPosition(spanPosition),
+                                                spanPosition,
+                                                WingDefinition.GetMainSparCenterZAtSpanPosition(spanPosition))
+        TrySetName(sparPoint, pointName)
+        targetSet.AppendHybridShape(sparPoint)
+        RequireUpdateObject(part, sparPoint, pointName)
+
+        Return sparPoint
+    End Function
+
+    Private Function CreateMainSparRibFeature(ByVal part As Object,
+                                              ByVal shapeFactory As Object,
+                                              ByVal sparBody As Object,
+                                              ByVal profileSketch As Object,
+                                              ByVal sparPath As Object,
+                                              ByVal sparName As String) As Object
+        TrySetInWorkObject(part, sparBody)
+
+        Try
+            Dim profileReference As Object = part.CreateReferenceFromObject(profileSketch)
+            Dim pathReference As Object = part.CreateReferenceFromObject(sparPath)
+            Dim sparFeature As Object = shapeFactory.AddNewRibFromRef(profileReference, pathReference)
+            TrySetName(sparFeature, sparName)
+            RequireUpdateObject(part, sparFeature, sparName)
+
+            Return sparFeature
+        Catch firstException As Exception
+            Try
+                Dim sparFeature As Object = shapeFactory.AddNewRib(profileSketch, sparPath)
+                TrySetName(sparFeature, sparName)
+                RequireUpdateObject(part, sparFeature, sparName)
+
+                Return sparFeature
+            Catch
+                Throw New InvalidOperationException("CATIA could not create the " & sparName & ". Check that the main spar profile is closed and that the spar path intersects the profile center.", firstException)
+            End Try
+        End Try
+    End Function
+
     Private Function AreSketchPointsCoincident(ByVal firstPoint As AirfoilCoordinate,
                                                ByVal secondPoint As AirfoilCoordinate) As Boolean
         Return (Math.Abs(firstPoint.X - secondPoint.X) < 0.000001) AndAlso _
@@ -481,9 +753,19 @@ Friend Module WingGenerator
     Private Function ConvertGlobalXzToSketchPoint(ByVal airfoilPoint As AirfoilCoordinate,
                                                   ByVal spanPosition As Double,
                                                   ByVal sketchAxis As SketchAxisData) As AirfoilCoordinate
-        Dim deltaX As Double = airfoilPoint.X - sketchAxis.OriginX
-        Dim deltaY As Double = spanPosition - sketchAxis.OriginY
-        Dim deltaZ As Double = airfoilPoint.Y - sketchAxis.OriginZ
+        Return ConvertGlobalPointToSketchPoint(airfoilPoint.X,
+                                               spanPosition,
+                                               airfoilPoint.Y,
+                                               sketchAxis)
+    End Function
+
+    Private Function ConvertGlobalPointToSketchPoint(ByVal globalX As Double,
+                                                     ByVal globalY As Double,
+                                                     ByVal globalZ As Double,
+                                                     ByVal sketchAxis As SketchAxisData) As AirfoilCoordinate
+        Dim deltaX As Double = globalX - sketchAxis.OriginX
+        Dim deltaY As Double = globalY - sketchAxis.OriginY
+        Dim deltaZ As Double = globalZ - sketchAxis.OriginZ
 
         Dim horizontalLengthSquared As Double =
             (sketchAxis.HorizontalX * sketchAxis.HorizontalX) +
