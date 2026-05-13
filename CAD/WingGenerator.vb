@@ -373,7 +373,7 @@ Friend Module WingGenerator
                                    ByVal shapeFactory As Object,
                                    ByVal ribPlaneSet As Object,
                                    ByVal station As WingStation,
-                                   Optional ByVal includeMainSparCutout As Boolean = False)
+                                   Optional ByVal includeRibCutouts As Boolean = False)
         Dim ribBody As Object = part.Bodies.Add()
         TrySetName(ribBody, station.Name & " 3 mm rib")
         TrySetInWorkObject(part, ribBody)
@@ -383,7 +383,7 @@ Friend Module WingGenerator
                                                          ribBody,
                                                          ribPlane,
                                                          station,
-                                                         includeMainSparCutout)
+                                                         includeRibCutouts)
         Dim ribPad As Object = CreateRibPad(part, ribBody, shapeFactory, ribSketch, station.Name)
 
         TrySetName(ribPad, station.Name & " 3 mm centered rib")
@@ -415,7 +415,7 @@ Friend Module WingGenerator
                                             ByVal ribBody As Object,
                                             ByVal ribPlane As Object,
                                             ByVal station As WingStation,
-                                            ByVal includeMainSparCutout As Boolean) As Object
+                                            ByVal includeRibCutouts As Boolean) As Object
         Dim chordLength As Double = WingDefinition.GetChordAtSpanPosition(station.SpanPosition)
 
         Dim airfoilCoordinates As List(Of AirfoilCoordinate) =
@@ -438,8 +438,9 @@ Friend Module WingGenerator
 
         CreateSmoothClosedRibSketchProfile(sketchFactory, sketchCoordinates)
 
-        If includeMainSparCutout Then
+        If includeRibCutouts Then
             CreateMainSparCutoutSketchProfile(sketchFactory, station, sketchAxis)
+            CreateRibLighteningCutoutSketchProfiles(sketchFactory, station, sketchAxis)
         End If
 
         ribSketch.CloseEdition()
@@ -461,6 +462,25 @@ Friend Module WingGenerator
         CreateSketchCircle(sketchFactory,
                            sparCenter,
                            WingDefinition.MainSparCutoutDiameter / 2.0)
+    End Sub
+
+    Private Sub CreateRibLighteningCutoutSketchProfiles(ByVal sketchFactory As Object,
+                                                        ByVal station As WingStation,
+                                                        ByVal sketchAxis As SketchAxisData)
+        For Each cutoutDefinition As WingDefinition.RibLighteningCutoutDefinition In WingDefinition.GetRibLighteningCutouts()
+            Dim cutoutDiameter As Double =
+                WingDefinition.GetRibLighteningCutoutDiameter(station.SpanPosition, cutoutDefinition)
+
+            If cutoutDiameter >= WingDefinition.RibLighteningCutoutMinimumDiameter Then
+                Dim cutoutCenter As AirfoilCoordinate =
+                    ConvertGlobalPointToSketchPoint(WingDefinition.GetRibLighteningCutoutCenterX(station.SpanPosition, cutoutDefinition),
+                                                    station.SpanPosition,
+                                                    WingDefinition.GetRibLighteningCutoutCenterZ(station.SpanPosition, cutoutDefinition),
+                                                    sketchAxis)
+
+                CreateSketchCircle(sketchFactory, cutoutCenter, cutoutDiameter / 2.0)
+            End If
+        Next
     End Sub
 
     Private Sub CreateSketchCircle(ByVal sketchFactory As Object,
