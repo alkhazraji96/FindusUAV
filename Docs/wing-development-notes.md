@@ -1,6 +1,6 @@
 # Wing Development Notes
 
-Date: 2026-05-12
+Date: 2026-05-13
 
 This note records the CATIA V5 / VB.NET wing-generation design and implementation state. It is intended as a handoff document for future AI agents or team members.
 
@@ -10,7 +10,7 @@ The CAD generation code is split across focused files in the `CAD` folder:
 
 ```text
 CAD/GenerateAirfoil.vb          Public facade used by the UI button
-CAD/WingGenerator.vb            Stage 1, Stage 2, and Stage 3 wing generation
+CAD/WingGenerator.vb            Stage 1 through Stage 4A wing generation
 CAD/WingDefinition.vb           Wing dimensions, rib count, and NACA 4415 constants
 CAD/WingStation.vb              Wing station/profile data structures
 CAD/NacaAirfoil.vb              General NACA 4-digit coordinate generation
@@ -25,17 +25,17 @@ The UI is not meant to contain CAD logic. The button handler should only call:
 GenerateAirfoil.Run()
 ```
 
-At the time of this note, `Run()` calls the Stage 3 outer wing skin generator.
+At the time of this note, `Run()` calls the Stage 4A physical rib generator.
 
 ## Current Implementation
 
 `GenerateAirfoil.vb` currently contains:
 
 - Public entry points only.
-- `Run()`, which delegates to Stage 3.
-- Compatibility wrappers for Stage 1, Stage 2, Stage 3, and the NACA 2412 test slice.
+- `Run()`, which delegates to Stage 4A.
+- Compatibility wrappers for Stage 1, Stage 2, Stage 3, Stage 4A, and the NACA 2412 test slice.
 
-The active workflow is Stage 3.
+The active workflow is Stage 4A.
 
 ## Wing Concept
 
@@ -161,25 +161,38 @@ Current behavior:
 - Builds one lofted outer skin surface through the 29 profiles.
 - Uses a consistent profile closing point to help CATIA align the loft sections.
 
-Current `Run()` target:
+Manual wrapper for this stage:
 
 ```vb
 CreateWingStage3OuterWingSkin()
 ```
 
-## Next Intended Stage
+## Stage 4A: Physical Ribs
 
-Stage 4 should create physical ribs:
+Stage 4A creates physical ribs:
 
 - Use the same 29 station shapes.
 - Create 3 mm solid rib plates centered on each station.
-- Keep ribs as separate bodies or clearly named features.
+- Keep each rib as a separate named CATIA body.
+- Keep the outer skin as a surface with no thickness.
+- Keep the Stage 1 planform, Stage 2 station profiles, and Stage 3 outer skin in the same generated part for reference.
+
+Current behavior:
+
+- Creates a new CATIA Part.
+- Creates the planform and rib station reference geometry.
+- Creates the 29 NACA 4415 station profiles.
+- Creates one lofted outer wing skin surface through those profiles.
+- Creates one mid-plane per rib station.
+- Creates one closed rib sketch per station.
+- Pads each rib sketch into a 3 mm solid rib body.
+- Converts each intended global X/Z rib point into CATIA sketch-local coordinates using the sketch's actual axis data. This avoids flipped or perpendicular ribs caused by CATIA's default `PlaneZX` local axis orientation.
 
 Spars and cutouts are intentionally deferred until after the skin and ribs are stable.
 
 ## Verification Checklist
 
-When running the current Stage 3 code in CATIA, verify:
+When running the current Stage 4A code in CATIA, verify:
 
 - Full span is 3543.65 mm.
 - Center chord is 586 mm.
@@ -191,3 +204,6 @@ When running the current Stage 3 code in CATIA, verify:
 - Profiles are oriented with span along Y and thickness along Z.
 - One outer wing skin surface is created through all 29 profiles.
 - The skin has no solid thickness yet.
+- There are 29 physical rib bodies.
+- Each rib is 3 mm thick in the span direction.
+- The ribs sit at the same stations as the airfoil profiles.

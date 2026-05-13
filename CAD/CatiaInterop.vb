@@ -98,4 +98,22 @@ Friend Module CatiaInterop
         Catch
         End Try
     End Sub
+
+    Friend Function TrySetPadSymmetric(ByVal pad As Object) As Boolean
+        Try
+            pad.IsSymmetric = True
+            Return True
+        Catch
+        End Try
+
+        Return False
+    End Function
+
+    Friend Sub TrySetPadFirstLimit(ByVal pad As Object, ByVal length As Double)
+        Try
+            pad.FirstLimit.Dimension.Value = length
+        Catch
+        End Try
+    End Sub
+
 End Module
