@@ -62,6 +62,25 @@ Friend Module CatiaInterop
         End Try
     End Sub
 
+    Friend Sub RequireUpdateObject(ByVal part As Object,
+                                   ByVal partObject As Object,
+                                   ByVal context As String)
+        Try
+            part.UpdateObject(partObject)
+        Catch ex As Exception
+            Throw New InvalidOperationException("CATIA failed to update " & context & ".", ex)
+        End Try
+    End Sub
+
+    Friend Sub RequireUpdatePart(ByVal part As Object,
+                                 ByVal context As String)
+        Try
+            part.Update()
+        Catch ex As Exception
+            Throw New InvalidOperationException("CATIA failed to update " & context & ".", ex)
+        End Try
+    End Sub
+
     Friend Sub TryReframe(ByVal catiaApplication As Object)
         Try
             catiaApplication.ActiveWindow.ActiveViewer.Reframe()
@@ -99,20 +118,29 @@ Friend Module CatiaInterop
         End Try
     End Sub
 
-    Friend Function TrySetPadSymmetric(ByVal pad As Object) As Boolean
+    Friend Sub RequireCenteredPad(ByVal pad As Object,
+                                  ByVal thickness As Double,
+                                  ByVal context As String)
+        Dim halfThickness As Double = thickness / 2.0
+        Dim symmetricException As Exception = Nothing
+
         Try
+            pad.FirstLimit.Dimension.Value = halfThickness
             pad.IsSymmetric = True
-            Return True
-        Catch
+            Return
+        Catch ex As Exception
+            symmetricException = ex
         End Try
 
-        Return False
-    End Function
-
-    Friend Sub TrySetPadFirstLimit(ByVal pad As Object, ByVal length As Double)
         Try
-            pad.FirstLimit.Dimension.Value = length
-        Catch
+            pad.FirstLimit.Dimension.Value = halfThickness
+            pad.SecondLimit.Dimension.Value = halfThickness
+            Return
+        Catch ex As Exception
+            Dim innerException As Exception = If(symmetricException IsNot Nothing,
+                                                symmetricException,
+                                                ex)
+            Throw New InvalidOperationException("CATIA could not center " & context & " to " & thickness.ToString() & " mm thickness.", innerException)
         End Try
     End Sub
 

@@ -7,6 +7,10 @@ Friend Module NacaAirfoil
                                      ByVal maximumCamberPosition As Double,
                                      ByVal maximumThickness As Double,
                                      ByVal closedTrailingEdge As Boolean) As List(Of AirfoilCoordinate)
+        If pointCountPerSurface < 5 Then
+            pointCountPerSurface = 5
+        End If
+
         Dim upperSurface As New List(Of AirfoilCoordinate)()
         Dim lowerSurface As New List(Of AirfoilCoordinate)()
 
@@ -35,7 +39,13 @@ Friend Module NacaAirfoil
             profileCoordinates.Add(upperSurface(pointIndex))
         Next
 
-        For pointIndex As Integer = 1 To lowerSurface.Count - 1
+        Dim lowerSurfaceEndIndex As Integer = lowerSurface.Count - 1
+
+        If closedTrailingEdge Then
+            lowerSurfaceEndIndex -= 1
+        End If
+
+        For pointIndex As Integer = 1 To lowerSurfaceEndIndex
             profileCoordinates.Add(lowerSurface(pointIndex))
         Next
 

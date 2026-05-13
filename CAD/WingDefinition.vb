@@ -1,6 +1,6 @@
 Friend Module WingDefinition
     Friend Const FullSpan As Double = 3543.65
-    Friend Const HalfSpan As Double = 1771.825
+    Friend Const HalfSpan As Double = FullSpan / 2.0
     Friend Const RootChord As Double = 586.0
     Friend Const TipChord As Double = 374.0
     Friend Const RibCountPerSide As Integer = 14

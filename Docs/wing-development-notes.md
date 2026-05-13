@@ -80,6 +80,8 @@ Rib spacing per half:
 1771.825 / 14 = 126.5589 mm
 ```
 
+In code, `HalfSpan` is derived from `FullSpan / 2.0` so the two values cannot drift apart.
+
 ## Coordinate System
 
 The generated wing uses this coordinate convention:
@@ -184,9 +186,10 @@ Current behavior:
 - Creates the 29 NACA 4415 station profiles.
 - Creates one lofted outer wing skin surface through those profiles.
 - Creates one mid-plane per rib station.
-- Creates one closed rib sketch per station.
-- Pads each rib sketch into a 3 mm solid rib body.
+- Creates one smooth closed rib sketch per station, with a polyline fallback if CATIA cannot create the 2D sketch spline.
+- Pads each rib sketch into a 3 mm centered solid rib body.
 - Converts each intended global X/Z rib point into CATIA sketch-local coordinates using the sketch's actual axis data. This avoids flipped or perpendicular ribs caused by CATIA's default `PlaneZX` local axis orientation.
+- Uses required CATIA updates for Stage 4A geometry so failures produce explicit errors instead of silently leaving a partial model.
 
 Spars and cutouts are intentionally deferred until after the skin and ribs are stable.
 

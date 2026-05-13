@@ -48,7 +48,7 @@ Friend Module WingGenerator
         Next
 
         TrySetInWorkObject(part, outerSkin)
-        part.Update()
+        RequireUpdatePart(part, "Stage 4A wing with physical ribs")
         TryReframe(catiaApplication)
 
         Return partDocument
@@ -90,7 +90,7 @@ Friend Module WingGenerator
                                                                   skinSet,
                                                                   stationProfiles)
         TrySetInWorkObject(part, outerSkin)
-        part.Update()
+        RequireUpdatePart(part, "Stage 3 outer wing skin")
         TryReframe(catiaApplication)
 
         Return partDocument
@@ -122,7 +122,7 @@ Friend Module WingGenerator
             AddAirfoilStationProfile(part, hybridShapeFactory, airfoilSet, station)
         Next
 
-        part.Update()
+        RequireUpdatePart(part, "Stage 2 airfoil stations")
         TryReframe(catiaApplication)
 
         Return partDocument
@@ -146,7 +146,7 @@ Friend Module WingGenerator
 
         AddPlanformGeometry(part, hybridShapeFactory, stageSet)
 
-        part.Update()
+        RequireUpdatePart(part, "Stage 1 planform")
         TryReframe(catiaApplication)
 
         Return partDocument
@@ -284,7 +284,7 @@ Friend Module WingGenerator
         Next
 
         targetSet.AppendHybridShape(outerSkinLoft)
-        TryUpdateObject(part, outerSkinLoft)
+        RequireUpdateObject(part, outerSkinLoft, "outer wing skin loft")
 
         Return outerSkinLoft
     End Function
@@ -317,7 +317,7 @@ Friend Module WingGenerator
         Dim ribPad As Object = CreateRibPad(part, ribBody, shapeFactory, ribSketch, station.Name)
 
         TrySetName(ribPad, station.Name & " 3 mm centered rib")
-        TryUpdateObject(part, ribPad)
+        RequireUpdateObject(part, ribPad, station.Name & " physical rib")
     End Sub
 
     Private Function CreateRibMidPlane(ByVal part As Object,
@@ -336,7 +336,7 @@ Friend Module WingGenerator
                                                                       False)
         TrySetName(ribPlane, station.Name & " mid-plane")
         ribPlaneSet.AppendHybridShape(ribPlane)
-        TryUpdateObject(part, ribPlane)
+        RequireUpdateObject(part, ribPlane, station.Name & " rib mid-plane")
 
         Return ribPlane
     End Function
@@ -362,33 +362,14 @@ Friend Module WingGenerator
 
         Dim sketchAxis As SketchAxisData = GetSketchAxisData(ribSketch, station.SpanPosition)
         Dim sketchFactory As Object = ribSketch.OpenEdition()
+        Dim sketchCoordinates As List(Of AirfoilCoordinate) =
+            ConvertGlobalXzToSketchCoordinates(airfoilCoordinates, station.SpanPosition, sketchAxis)
 
-        For pointIndex As Integer = 0 To airfoilCoordinates.Count - 1
-            Dim startPoint As AirfoilCoordinate = airfoilCoordinates(pointIndex)
-            Dim endPoint As AirfoilCoordinate
-
-            If pointIndex = airfoilCoordinates.Count - 1 Then
-                endPoint = airfoilCoordinates(0)
-            Else
-                endPoint = airfoilCoordinates(pointIndex + 1)
-            End If
-
-            If Not AreSketchPointsCoincident(startPoint, endPoint) Then
-                Dim startSketchPoint As AirfoilCoordinate =
-                    ConvertGlobalXzToSketchPoint(startPoint, station.SpanPosition, sketchAxis)
-                Dim endSketchPoint As AirfoilCoordinate =
-                    ConvertGlobalXzToSketchPoint(endPoint, station.SpanPosition, sketchAxis)
-
-                sketchFactory.CreateLine(startSketchPoint.X,
-                                         startSketchPoint.Y,
-                                         endSketchPoint.X,
-                                         endSketchPoint.Y)
-            End If
-        Next
+        CreateSmoothClosedRibSketchProfile(sketchFactory, sketchCoordinates)
 
         ribSketch.CloseEdition()
-        TryUpdateObject(part, ribSketch)
-        TryUpdatePart(part)
+        RequireUpdateObject(part, ribSketch, station.Name & " rib sketch")
+        RequireUpdatePart(part, station.Name & " rib sketch")
 
         Return ribSketch
     End Function
@@ -404,6 +385,64 @@ Friend Module WingGenerator
         End Try
     End Function
 
+    Private Function ConvertGlobalXzToSketchCoordinates(ByVal airfoilCoordinates As List(Of AirfoilCoordinate),
+                                                        ByVal spanPosition As Double,
+                                                        ByVal sketchAxis As SketchAxisData) As List(Of AirfoilCoordinate)
+        Dim sketchCoordinates As New List(Of AirfoilCoordinate)()
+
+        For Each airfoilPoint As AirfoilCoordinate In airfoilCoordinates
+            sketchCoordinates.Add(ConvertGlobalXzToSketchPoint(airfoilPoint, spanPosition, sketchAxis))
+        Next
+
+        Return sketchCoordinates
+    End Function
+
+    Private Sub CreateSmoothClosedRibSketchProfile(ByVal sketchFactory As Object,
+                                                   ByVal sketchCoordinates As List(Of AirfoilCoordinate))
+        If sketchCoordinates.Count < 3 Then
+            Throw New InvalidOperationException("At least three points are required to create a closed rib profile.")
+        End If
+
+        Dim sketchPoints As New List(Of Object)()
+
+        For Each sketchCoordinate As AirfoilCoordinate In sketchCoordinates
+            sketchPoints.Add(sketchFactory.CreatePoint(sketchCoordinate.X, sketchCoordinate.Y))
+        Next
+
+        Try
+            Dim sketchPointArray(sketchPoints.Count - 1) As Object
+
+            For pointIndex As Integer = 0 To sketchPoints.Count - 1
+                sketchPointArray(pointIndex) = sketchPoints(pointIndex)
+            Next
+
+            sketchFactory.CreateSpline(sketchPointArray)
+        Catch
+            CreatePolylineRibSketchProfile(sketchFactory, sketchCoordinates)
+        End Try
+
+        Dim lastPoint As AirfoilCoordinate = sketchCoordinates(sketchCoordinates.Count - 1)
+        Dim firstPoint As AirfoilCoordinate = sketchCoordinates(0)
+        CreateSketchLineIfDistinct(sketchFactory, lastPoint, firstPoint)
+    End Sub
+
+    Private Sub CreatePolylineRibSketchProfile(ByVal sketchFactory As Object,
+                                               ByVal sketchCoordinates As List(Of AirfoilCoordinate))
+        For pointIndex As Integer = 0 To sketchCoordinates.Count - 2
+            CreateSketchLineIfDistinct(sketchFactory,
+                                       sketchCoordinates(pointIndex),
+                                       sketchCoordinates(pointIndex + 1))
+        Next
+    End Sub
+
+    Private Sub CreateSketchLineIfDistinct(ByVal sketchFactory As Object,
+                                           ByVal startPoint As AirfoilCoordinate,
+                                           ByVal endPoint As AirfoilCoordinate)
+        If Not AreSketchPointsCoincident(startPoint, endPoint) Then
+            sketchFactory.CreateLine(startPoint.X, startPoint.Y, endPoint.X, endPoint.Y)
+        End If
+    End Sub
+
     Private Function CreateRibPad(ByVal part As Object,
                                   ByVal ribBody As Object,
                                   ByVal shapeFactory As Object,
@@ -412,23 +451,19 @@ Friend Module WingGenerator
         Dim halfThickness As Double = WingDefinition.RibThickness / 2.0
 
         TrySetInWorkObject(part, ribBody)
-        TryUpdateObject(part, ribSketch)
-        TryUpdatePart(part)
+        RequireUpdateObject(part, ribSketch, ribName & " rib sketch before pad")
+        RequireUpdatePart(part, ribName & " rib body before pad")
 
         Try
             Dim ribPad As Object = shapeFactory.AddNewPad(ribSketch, halfThickness)
-            If Not TrySetPadSymmetric(ribPad) Then
-                TrySetPadFirstLimit(ribPad, WingDefinition.RibThickness)
-            End If
+            RequireCenteredPad(ribPad, WingDefinition.RibThickness, ribName & " rib pad")
 
             Return ribPad
         Catch firstException As COMException
             Try
                 Dim ribSketchReference As Object = part.CreateReferenceFromObject(ribSketch)
                 Dim ribPad As Object = shapeFactory.AddNewPadFromRef(ribSketchReference, halfThickness)
-                If Not TrySetPadSymmetric(ribPad) Then
-                    TrySetPadFirstLimit(ribPad, WingDefinition.RibThickness)
-                End If
+                RequireCenteredPad(ribPad, WingDefinition.RibThickness, ribName & " rib pad")
 
                 Return ribPad
             Catch
