@@ -43,6 +43,9 @@ Public Class MainForm
         Dim trailingEdgeX As Double = tailDistanceOffset + vertRootChord
         Dim vertTipOffset As Double = trailingEdgeX - vertTipChord
 
+        ' Rudder Clearance (Raises the bottom of the rudder to clear the elevator)
+        Dim rudderClearanceZ As Double = 25.0 ' Adjust this value to increase/decrease pitch clearance
+
         ' =====================================================
         ' CONNECT TO CATIA
         ' =====================================================
@@ -115,7 +118,6 @@ Public Class MainForm
             pad.Name = "Horiz_Rib_" & i
 
             ' -> THE SYMMETRY FIX <-
-            ' The left rib natively extrudes inward. We ONLY reverse the rightmost rib to push it inward!
             If i = horizRibCount - 1 Then
                 pad.FirstLimit.Dimension.Value = 0.0
                 pad.SecondLimit.Dimension.Value = ribThickness
@@ -202,10 +204,26 @@ Public Class MainForm
         Dim vRearSparTipSk = DrawGenericSketch(activePart, vertTipPlaneRef, vRearSparTipPts, "Vert_Rear_Spar_Tip", "Vertical")
         CreateSolidLoftSecurely(activePart, hybridShapeFactory, skinSet, vRearSparRootSk, vRearSparTipSk, "Vertical_Rear_Spar")
 
-        ' C. VERTICAL RUDDER
-        Dim vRudRootPts = generator.GeneratePartialSymmetricNACA(vertRootChord, 0.12, resolution, vertRootOffset, 0.77, 1.0)
+        ' =====================================================
+        ' C. VERTICAL RUDDER (MODIFIED FOR PITCH CLEARANCE)
+        ' =====================================================
+        ' 1. Calculate local taper/sweep for the raised rudder plane
+        Dim tRudder As Double = rudderClearanceZ / vertSpan
+        Dim vRudLocalRootChord As Double = vertRootChord + tRudder * (vertTipChord - vertRootChord)
+        Dim vRudLocalRootOffset As Double = vertRootOffset + tRudder * (vertTipOffset - vertRootOffset)
+
+        ' 2. Create the new raised reference plane
+        Dim rudderClearancePlane As HybridShapePlaneOffset = hybridShapeFactory.AddNewPlaneOffset(xyPlaneRef, rudderClearanceZ, False)
+        planeSet.AppendHybridShape(rudderClearancePlane)
+        activePart.UpdateObject(rudderClearancePlane)
+        Dim rudderClearancePlaneRef As Reference = activePart.CreateReferenceFromObject(rudderClearancePlane)
+
+        ' 3. Generate points mapping to the tapered contour
+        Dim vRudRootPts = generator.GeneratePartialSymmetricNACA(vRudLocalRootChord, 0.12, resolution, vRudLocalRootOffset, 0.77, 1.0)
         Dim vRudTipPts = generator.GeneratePartialSymmetricNACA(vertTipChord, 0.12, resolution, vertTipOffset, 0.77, 1.0)
-        Dim vRudRootSketch = DrawRibSketch(activePart, xyPlaneRef, vRudRootPts, "Vert_Rudder_Root", "Vertical", False, 0, 0)
+
+        ' 4. Draw sketches & Loft
+        Dim vRudRootSketch = DrawRibSketch(activePart, rudderClearancePlaneRef, vRudRootPts, "Vert_Rudder_Root", "Vertical", False, 0, 0)
         Dim vRudTipSketch = DrawRibSketch(activePart, vertTipPlaneRef, vRudTipPts, "Vert_Rudder_Tip", "Vertical", False, 0, 0)
         CreateSolidLoftSecurely(activePart, hybridShapeFactory, skinSet, vRudRootSketch, vRudTipSketch, "Vertical_Rudder")
 
@@ -232,7 +250,7 @@ Public Class MainForm
         WrapSkin(hybridShapeFactory, skinSet, activePart, vertMainSketches, "Vertical_Main_Skin")
 
         activePart.Update()
-        MessageBox.Show("Symmetry locked! The left and right horizontal tips are now perfectly flush.", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information)
+        MessageBox.Show("Generation Complete! Rudder clearance added successfully.", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information)
     End Sub
 
     ' =====================================================
