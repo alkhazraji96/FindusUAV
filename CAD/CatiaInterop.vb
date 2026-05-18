@@ -118,6 +118,21 @@ Friend Module CatiaInterop
         End Try
     End Sub
 
+    Friend Sub TrySetObjectColor(ByVal partDocument As Object,
+                                 ByVal catiaObject As Object,
+                                 ByVal red As Integer,
+                                 ByVal green As Integer,
+                                 ByVal blue As Integer)
+        Try
+            Dim selection As Object = partDocument.Selection
+            selection.Clear()
+            selection.Add(catiaObject)
+            selection.VisProperties.SetRealColor(red, green, blue, 1)
+            selection.Clear()
+        Catch
+        End Try
+    End Sub
+
     Friend Sub RequireCenteredPad(ByVal pad As Object,
                                   ByVal thickness As Double,
                                   ByVal context As String)

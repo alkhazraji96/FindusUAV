@@ -17,10 +17,36 @@ Friend Module WingDefinition
     Friend Const MainSparCutoutDiameter As Double = 31.0
     Friend Const RibLighteningCutoutEdgeMargin As Double = 6.0
     Friend Const RibLighteningCutoutMinimumDiameter As Double = 8.0
+    Friend Const AileronInnerRibIndex As Integer = 8
+    Friend Const AileronOuterRibIndex As Integer = RibCountPerSide
+    Friend Const AileronFixedPanelEndX As Double = TipChord * 0.7
+    Friend Const AileronRearSparWidth As Double = TipChord * 0.03
+    Friend Const AileronRearSparEndX As Double = AileronFixedPanelEndX + AileronRearSparWidth
+    Friend Const AileronClearanceGap As Double = TipChord * 0.02
+    Friend Const AileronPanelStartX As Double = AileronRearSparEndX + AileronClearanceGap
+    Friend Const AileronRibStationTolerance As Double = 1.0
 
     Friend ReadOnly Property MainSparInnerDiameter As Double
         Get
             Return MainSparOuterDiameter - (2.0 * MainSparWallThickness)
+        End Get
+    End Property
+
+    Friend ReadOnly Property AileronSpanLength As Double
+        Get
+            Return AileronOuterSpanPosition - AileronInnerSpanPosition
+        End Get
+    End Property
+
+    Friend ReadOnly Property AileronOuterSpanPosition As Double
+        Get
+            Return GetRibSpanPosition(AileronOuterRibIndex)
+        End Get
+    End Property
+
+    Friend ReadOnly Property AileronInnerSpanPosition As Double
+        Get
+            Return GetRibSpanPosition(AileronInnerRibIndex)
         End Get
     End Property
 
@@ -37,6 +63,10 @@ Friend Module WingDefinition
         Return RootChord + ((TipChord - RootChord) * spanRatio)
     End Function
 
+    Friend Function GetRibSpanPosition(ByVal ribIndex As Integer) As Double
+        Return (HalfSpan / CDbl(RibCountPerSide)) * CDbl(ribIndex)
+    End Function
+
     Friend Function GetMainSparCenterXAtSpanPosition(ByVal spanPosition As Double) As Double
         Return GetChordAtSpanPosition(spanPosition) * MainSparChordFraction
     End Function
@@ -44,6 +74,29 @@ Friend Module WingDefinition
     Friend Function GetMainSparCenterZAtSpanPosition(ByVal spanPosition As Double) As Double
         Return GetChordAtSpanPosition(spanPosition) *
             GetMeanCamberAtChordFraction(MainSparChordFraction)
+    End Function
+
+    Friend Function GetAileronFixedPanelEndXAtSpanPosition(ByVal spanPosition As Double) As Double
+        Return AileronFixedPanelEndX
+    End Function
+
+    Friend Function GetAileronRearSparEndXAtSpanPosition(ByVal spanPosition As Double) As Double
+        Return AileronRearSparEndX
+    End Function
+
+    Friend Function GetAileronPanelStartXAtSpanPosition(ByVal spanPosition As Double) As Double
+        Return AileronPanelStartX
+    End Function
+
+    Friend Function IsWithinAileronSpan(ByVal spanPosition As Double) As Boolean
+        Dim absoluteSpanPosition As Double = Math.Abs(spanPosition)
+
+        If absoluteSpanPosition < 0.000001 Then
+            Return False
+        End If
+
+        Return absoluteSpanPosition >= (AileronInnerSpanPosition - AileronRibStationTolerance) AndAlso
+            absoluteSpanPosition <= (AileronOuterSpanPosition + AileronRibStationTolerance)
     End Function
 
     Friend Function GetRibLighteningCutoutCenterX(ByVal spanPosition As Double,

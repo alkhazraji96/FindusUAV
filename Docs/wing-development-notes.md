@@ -10,8 +10,8 @@ The CAD generation code is split across focused files in the `CAD` folder:
 
 ```text
 CAD/GenerateAirfoil.vb          Public facade used by the UI button
-CAD/WingGenerator.vb            Stage 1 through Stage 4B wing generation
-CAD/WingDefinition.vb           Wing, rib, spar, cutout, and NACA 4415 constants
+CAD/WingGenerator.vb            Stage 1 through Stage 4C wing generation
+CAD/WingDefinition.vb           Wing, rib, spar, cutout, aileron, and NACA 4415 constants
 CAD/WingStation.vb              Wing station/profile data structures
 CAD/NacaAirfoil.vb              General NACA 4-digit coordinate generation
 CAD/AirfoilCoordinate.vb        Airfoil coordinate data structure
@@ -25,17 +25,17 @@ The UI is not meant to contain CAD logic. The button handler should only call:
 GenerateAirfoil.Run()
 ```
 
-At the time of this note, `Run()` calls the Stage 4B physical rib, main spar, and cutout generator.
+At the time of this note, `Run()` calls the Stage 4C physical rib, main spar, cutout, and aileron generator.
 
 ## Current Implementation
 
 `GenerateAirfoil.vb` currently contains:
 
 - Public entry points only.
-- `Run()`, which delegates to Stage 4B.
-- Compatibility wrappers for Stage 1, Stage 2, Stage 3, Stage 4A, Stage 4B, and the NACA 2412 test slice.
+- `Run()`, which delegates to Stage 4C.
+- Compatibility wrappers for Stage 1, Stage 2, Stage 3, Stage 4A, Stage 4B, Stage 4C, and the NACA 2412 test slice.
 
-The active workflow is Stage 4B.
+The active workflow is Stage 4C.
 
 ## Wing Concept
 
@@ -45,11 +45,13 @@ The goal is a basic UAV wing model with:
 - Physical internal ribs.
 - One hollow main spar at 30% local chord.
 - Circular rib cutouts for spar clearance and weight reduction.
+- Two tail-style aileron control surfaces, one left and one right.
 - No twist.
 - No dihedral.
 - No skin thickness yet.
+- No aileron hinge hardware or joints yet.
 
-The outer skin is a surface, while the ribs and main spar are physical solids.
+The fixed outer skin is a surface, while the ribs, main spar, aileron rear hinge spars, and aileron control surfaces are physical solids.
 
 ## Wing Inputs
 
@@ -104,6 +106,23 @@ Rib spacing per half:
 ```
 
 In code, `HalfSpan` is derived from `FullSpan / 2.0` so the two values cannot drift apart.
+
+Ailerons:
+
+```text
+Count: 2 total, one per semi-span
+Span per aileron: Rib_08 to Rib_14 = 759.35 mm
+Semi-span fraction: 42.86%
+Tip margin: none
+Inner aileron boundary: +/-1012.471 mm at Rib_08
+Outer aileron boundary: +/-1771.825 mm at Rib_14 / wing tip
+Fixed wing panel aft edge: X = 261.8 mm
+Rear hinge spar: X = 261.8 mm to X = 273.02 mm
+Aileron body: X = 280.5 mm to local trailing edge
+Clearance between rear spar and aileron: 7.48 mm
+```
+
+The aileron chord stations are constant global X values, so the fixed cut, rear hinge spar, and aileron leading edge remain parallel to the straight wing leading edge. The aileron span is rib-to-rib instead of exactly 40% semi-span so the control surface ends on structural rib stations.
 
 ## Coordinate System
 
@@ -222,7 +241,7 @@ CreateWingStage4APhysicalRibs()
 
 ## Stage 4B: Main Spar And Rib Cutouts
 
-Stage 4B is the current active generator.
+Stage 4B is the previous active generator.
 
 It creates:
 
@@ -257,9 +276,51 @@ Manual wrapper for this stage:
 CreateWingStage4BPhysicalRibsAndMainSpar()
 ```
 
+## Stage 4C: Tail-Style Ailerons
+
+Stage 4C is the current active generator.
+
+It creates everything from Stage 4B, then adds left and right aileron geometry modeled after the tail control-surface approach:
+
+- The aileron span runs from Rib_08 to Rib_14 on each semi-span.
+- The aileron reaches the outermost rib at the wing tip.
+- The aileron span is 759.35 mm, or 42.86% of each semi-span.
+- The fixed wing panel ends at constant X = 261.8 mm inside the aileron span.
+- A closed rear hinge spar solid occupies constant X = 261.8 mm to X = 273.02 mm.
+- The physical aileron body starts at constant X = 280.5 mm and continues to the local trailing edge.
+- This leaves a 7.48 mm clearance between the aft face of the rear spar and the aileron leading edge.
+- The aileron support loft surfaces and closed physical aileron solids are colored orange.
+
+Rib behavior:
+
+- Ribs inside the aileron span are generated only as forward wing rib sections.
+- The forward wing rib section stops at constant X = 261.8 mm.
+- No aft leftover rib bodies are generated behind the rear hinge spar.
+- Existing spar and lightening cutouts are kept only when their circular profile fits fully inside the generated rib section.
+
+Skin behavior:
+
+- The fixed wing skin remains zero-thickness loft surface geometry.
+- Stage 4C does not create one full wing skin over the aileron region.
+- The center/inboard fixed wing skin is one full-chord surface from left Rib_08 to right Rib_08.
+- The left and right outboard fixed wing skins are separate closed loft surfaces from the leading edge to X = 261.8 mm.
+- The left and right aileron support surfaces are separate closed colored loft surfaces from X = 280.5 mm to the trailing edge.
+- The aileron support surfaces are closed into physical aileron solids.
+- The rear hinge spar is generated from closed airfoil slices between X = 261.8 mm and X = 273.02 mm.
+- The split profiles use constant-X stations, so CATIA is guided to keep the aileron collection parallel to the leading edge.
+- Stage 4C adds upper and lower reference curves for the fixed wing rear spar face, rear hinge spar aft face, aileron leading edge, and aileron inner/outer end cuts.
+- The aileron skin/support surfaces do not sit on top of another full wing skin surface, so CATIA should not fade or flicker their color against an overlapping skin.
+- The fixed wing skin is not thickened yet, so there is no removed thick-skin material.
+
+Manual wrapper for this stage:
+
+```vb
+CreateWingStage4CPhysicalRibsMainSparAndAilerons()
+```
+
 ## Verification Checklist
 
-When running the current Stage 4B code in CATIA, verify:
+When running the current Stage 4C code in CATIA, verify:
 
 - Full span is 3543.65 mm.
 - Center chord is 586 mm.
@@ -269,14 +330,24 @@ When running the current Stage 4B code in CATIA, verify:
 - There are 29 rib stations.
 - Every station profile is NACA 4415.
 - Profiles are oriented with span along Y and thickness along Z.
-- One outer wing skin surface is created through all 29 profiles.
-- The skin has no solid thickness yet.
-- There are 29 physical rib bodies.
-- Each rib is 3 mm thick in the span direction.
+- Stage 4C creates separate fixed wing and aileron surfaces instead of one full wing skin surface over the aileron span.
+- The fixed wing skin has no solid thickness yet.
+- There are 29 physical rib bodies across 29 rib stations.
+- Each rib section is 3 mm thick in the span direction.
 - The ribs sit at the same stations as the airfoil profiles.
-- Each rib has one 31 mm main spar clearance hole.
-- Each rib has three circular lightening cutouts.
+- Full and forward rib sections have one 31 mm main spar clearance hole when the circular cutout fits fully inside that section.
+- Full and split rib sections keep lightening cutouts only when each circular cutout fits fully inside the generated rib section.
 - The lightening cutouts are positioned at 15%, 50%, and 70% chord.
 - The lightening cutouts remain inside the airfoil profile on tip ribs.
 - The main spar is a hollow circular tube at 30% local chord.
 - The main spar passes through the rib spar holes.
+- There are left and right aileron rear hinge spar solids.
+- There are left and right physical aileron solids.
+- There are left and right aileron reference curves.
+- Each aileron has 759.35 mm span.
+- Each aileron starts at Rib_08 and ends at Rib_14 / the wing tip.
+- The fixed wing panel ends at constant X = 261.8 mm inside the aileron span.
+- The rear hinge spar occupies constant X = 261.8 mm to X = 273.02 mm.
+- The aileron body starts at constant X = 280.5 mm and reaches the local trailing edge.
+- Ribs inside the aileron region are trimmed to forward wing rib bodies only; no aft rib leftovers are generated.
+- The aileron surfaces and physical aileron solids are visible as separate orange geometry without a full skin underneath them.

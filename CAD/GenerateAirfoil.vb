@@ -4,7 +4,7 @@ Public Class GenerateAirfoil
     End Sub
 
     Public Shared Sub Run()
-        WingGenerator.CreateStage4BPhysicalRibsAndMainSpar()
+        WingGenerator.CreateStage4CPhysicalRibsMainSparAndAilerons()
     End Sub
 
     Public Shared Function CreateWingStage1Planform() As Object
@@ -25,6 +25,10 @@ Public Class GenerateAirfoil
 
     Public Shared Function CreateWingStage4BPhysicalRibsAndMainSpar() As Object
         Return WingGenerator.CreateStage4BPhysicalRibsAndMainSpar()
+    End Function
+
+    Public Shared Function CreateWingStage4CPhysicalRibsMainSparAndAilerons() As Object
+        Return WingGenerator.CreateStage4CPhysicalRibsMainSparAndAilerons()
     End Function
 
     Public Shared Function CreateNaca2412Part(Optional ByVal chordLength As Double = 100.0,
