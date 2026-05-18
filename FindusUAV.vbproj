@@ -73,6 +73,14 @@
     <Import Include="System.Threading.Tasks" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="CAD\AirfoilCoordinate.vb" />
+    <Compile Include="CAD\CatiaInterop.vb" />
+    <Compile Include="CAD\GenerateAirfoil.vb" />
+    <Compile Include="CAD\Naca2412SliceGenerator.vb" />
+    <Compile Include="CAD\NacaAirfoil.vb" />
+    <Compile Include="CAD\WingDefinition.vb" />
+    <Compile Include="CAD\WingGenerator.vb" />
+    <Compile Include="CAD\WingStation.vb" />
     <Compile Include="MainForm\MainForm.vb">
       <SubType>Form</SubType>
     </Compile>
@@ -869,7 +877,7 @@
     </COMReference>
   </ItemGroup>
   <ItemGroup>
-    <Folder Include="CAD\" />
+    <Folder Include="Docs\" />
     <Folder Include="Models\" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.VisualBasic.targets" />

@@ -1,5 +1,8 @@
 ﻿Public Class MainForm
-    Private Sub Form_Load(sender As Object, e As EventArgs) Handles MyBase.Load
-        Console.WriteLine("Hello World!")
+
+    Private Sub btnRun_Click(sender As Object, e As EventArgs) Handles btnRun.Click
+        GenerateAirfoil.Run()
     End Sub
+
+
 End Class
