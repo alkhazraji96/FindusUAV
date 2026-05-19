@@ -111,10 +111,10 @@ Ailerons:
 
 ```text
 Count: 2 total, one per semi-span
-Span per aileron: Rib_08 to Rib_14 = 759.35 mm
-Semi-span fraction: 42.86%
+Span per aileron: 708.73 mm
+Semi-span fraction: 40%
 Tip margin: none
-Inner aileron boundary: +/-1012.471 mm at Rib_08
+Inner aileron boundary: +/-1063.095 mm, between Rib_08 and Rib_09
 Outer aileron boundary: +/-1771.825 mm at Rib_14 / wing tip
 Fixed wing panel aft edge: X = 261.8 mm
 Rear hinge spar: X = 261.8 mm to X = 273.02 mm
@@ -122,7 +122,7 @@ Aileron body: X = 280.5 mm to local trailing edge
 Clearance between rear spar and aileron: 7.48 mm
 ```
 
-The aileron chord stations are constant global X values, so the fixed cut, rear hinge spar, and aileron leading edge remain parallel to the straight wing leading edge. The aileron span is rib-to-rib instead of exactly 40% semi-span so the control surface ends on structural rib stations.
+The aileron chord stations are constant global X values, so the fixed cut, rear hinge spar, and aileron leading edge remain parallel to the straight wing leading edge. The aileron span is exactly 40% of the semi-span and uses a synthetic inner span station when the inner boundary falls between ribs.
 
 ## Coordinate System
 
@@ -282,9 +282,10 @@ Stage 4C is the current active generator.
 
 It creates everything from Stage 4B, then adds left and right aileron geometry modeled after the tail control-surface approach:
 
-- The aileron span runs from Rib_08 to Rib_14 on each semi-span.
+- The aileron span runs from the wing tip inward for 40% of each semi-span.
 - The aileron reaches the outermost rib at the wing tip.
-- The aileron span is 759.35 mm, or 42.86% of each semi-span.
+- The aileron span is 708.73 mm.
+- The aileron inner boundary is at +/-1063.095 mm, between Rib_08 and Rib_09.
 - The fixed wing panel ends at constant X = 261.8 mm inside the aileron span.
 - A closed rear hinge spar solid occupies constant X = 261.8 mm to X = 273.02 mm.
 - The physical aileron body starts at constant X = 280.5 mm and continues to the local trailing edge.
@@ -302,12 +303,13 @@ Skin behavior:
 
 - The fixed wing skin remains zero-thickness loft surface geometry.
 - Stage 4C does not create one full wing skin over the aileron region.
-- The center/inboard fixed wing skin is one full-chord surface from left Rib_08 to right Rib_08.
+- The center/inboard fixed wing skin is one full-chord surface between the left and right synthetic aileron inner-boundary stations.
 - The left and right outboard fixed wing skins are separate closed loft surfaces from the leading edge to X = 261.8 mm.
 - The left and right aileron support surfaces are separate closed colored loft surfaces from X = 280.5 mm to the trailing edge.
 - The aileron support surfaces are closed into physical aileron solids.
 - The rear hinge spar is generated from closed airfoil slices between X = 261.8 mm and X = 273.02 mm.
 - The split profiles use constant-X stations, so CATIA is guided to keep the aileron collection parallel to the leading edge.
+- The aileron, outboard fixed skin, and rear hinge spar lofts include synthetic inner-boundary profiles because the 40% span boundary is not required to land on a rib.
 - Stage 4C adds upper and lower reference curves for the fixed wing rear spar face, rear hinge spar aft face, aileron leading edge, and aileron inner/outer end cuts.
 - The aileron skin/support surfaces do not sit on top of another full wing skin surface, so CATIA should not fade or flicker their color against an overlapping skin.
 - The fixed wing skin is not thickened yet, so there is no removed thick-skin material.
@@ -344,10 +346,10 @@ When running the current Stage 4C code in CATIA, verify:
 - There are left and right aileron rear hinge spar solids.
 - There are left and right physical aileron solids.
 - There are left and right aileron reference curves.
-- Each aileron has 759.35 mm span.
-- Each aileron starts at Rib_08 and ends at Rib_14 / the wing tip.
+- Each aileron has 708.73 mm span.
+- Each aileron starts at the wing tip and extends inward to +/-1063.095 mm, between Rib_08 and Rib_09.
 - The fixed wing panel ends at constant X = 261.8 mm inside the aileron span.
 - The rear hinge spar occupies constant X = 261.8 mm to X = 273.02 mm.
 - The aileron body starts at constant X = 280.5 mm and reaches the local trailing edge.
-- Ribs inside the aileron region are trimmed to forward wing rib bodies only; no aft rib leftovers are generated.
+- Ribs inside the aileron region, currently Rib_09 through Rib_14 on each side, are trimmed to forward wing rib bodies only; no aft rib leftovers are generated.
 - The aileron surfaces and physical aileron solids are visible as separate orange geometry without a full skin underneath them.
