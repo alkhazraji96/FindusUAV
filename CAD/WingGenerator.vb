@@ -393,6 +393,27 @@ Friend Module WingGenerator
         Return stations
     End Function
 
+    Private Function BuildAileronSurfaceStations(ByVal spanSign As Double,
+                                                 ByVal sideName As String) As List(Of WingStation)
+        Dim stations As New List(Of WingStation)()
+        Dim sideRibPrefix As String = If(spanSign < 0.0, "Rib_L", "Rib_R")
+
+        stations.Add(New WingStation(sideName & "_Aileron_Inner_Boundary",
+                                     spanSign * WingDefinition.AileronInnerSpanPosition))
+
+        For ribIndex As Integer = 1 To WingDefinition.RibCountPerSide
+            Dim ribSpanPosition As Double = WingDefinition.GetRibSpanPosition(ribIndex)
+
+            If ribSpanPosition > (WingDefinition.AileronInnerSpanPosition + 0.000001) AndAlso
+                ribSpanPosition <= (WingDefinition.AileronOuterSpanPosition + 0.000001) Then
+                stations.Add(New WingStation(sideRibPrefix & ribIndex.ToString("00"),
+                                             spanSign * ribSpanPosition))
+            End If
+        Next
+
+        Return stations
+    End Function
+
     Private Function AddAirfoilStationProfile(ByVal part As Object,
                                               ByVal hybridShapeFactory As Object,
                                               ByVal targetSet As Object,
@@ -467,13 +488,24 @@ Friend Module WingGenerator
                                                ByVal stations As List(Of WingStation),
                                                ByVal stationProfiles As List(Of WingStationProfile))
         Dim centerSkinProfiles As New List(Of WingStationProfile)()
+        centerSkinProfiles.Add(AddAirfoilStationProfile(part,
+                                                        hybridShapeFactory,
+                                                        fixedSkinSet,
+                                                        New WingStation("Aileron_Left_Inner_Boundary",
+                                                                        -WingDefinition.AileronInnerSpanPosition)))
 
         For stationIndex As Integer = 0 To stations.Count - 1
-            If Math.Abs(stations(stationIndex).SpanPosition) <=
-                (WingDefinition.AileronInnerSpanPosition + WingDefinition.AileronRibStationTolerance) Then
+            If Math.Abs(stations(stationIndex).SpanPosition) <
+                (WingDefinition.AileronInnerSpanPosition - 0.000001) Then
                 centerSkinProfiles.Add(stationProfiles(stationIndex))
             End If
         Next
+
+        centerSkinProfiles.Add(AddAirfoilStationProfile(part,
+                                                        hybridShapeFactory,
+                                                        fixedSkinSet,
+                                                        New WingStation("Aileron_Right_Inner_Boundary",
+                                                                        WingDefinition.AileronInnerSpanPosition)))
 
         CreateOuterWingSkinFromProfiles(part,
                                         hybridShapeFactory,
@@ -506,16 +538,15 @@ Friend Module WingGenerator
                                                  ByVal sideName As String)
         Dim fixedWingProfiles As New List(Of WingStationProfile)()
 
-        For ribIndex As Integer = WingDefinition.AileronInnerRibIndex To WingDefinition.AileronOuterRibIndex
-            Dim spanPosition As Double = spanSign * WingDefinition.GetRibSpanPosition(ribIndex)
-            Dim chordLength As Double = WingDefinition.GetChordAtSpanPosition(spanPosition)
+        For Each station As WingStation In BuildAileronSurfaceStations(spanSign, sideName)
+            Dim chordLength As Double = WingDefinition.GetChordAtSpanPosition(station.SpanPosition)
 
             fixedWingProfiles.Add(AddClosedSplitSkinProfile(part,
                                                             hybridShapeFactory,
                                                             targetSet,
-                                                            sideName & " outboard fixed wing skin profile Rib_" & ribIndex.ToString("00"),
-                                                            sideName & "_Fixed_Wing_Skin_Rib_" & ribIndex.ToString("00"),
-                                                            spanPosition,
+                                                            sideName & " outboard fixed wing skin profile " & station.Name,
+                                                            sideName & "_Fixed_Wing_Skin_" & station.Name,
+                                                            station.SpanPosition,
                                                             BuildFixedWingOutboardSkinProfileCoordinates(chordLength)))
         Next
 
@@ -535,16 +566,15 @@ Friend Module WingGenerator
         Dim aileronSkins As New List(Of Object)()
         Dim aileronProfiles As New List(Of WingStationProfile)()
 
-        For ribIndex As Integer = WingDefinition.AileronInnerRibIndex To WingDefinition.AileronOuterRibIndex
-            Dim spanPosition As Double = spanSign * WingDefinition.GetRibSpanPosition(ribIndex)
-            Dim chordLength As Double = WingDefinition.GetChordAtSpanPosition(spanPosition)
+        For Each station As WingStation In BuildAileronSurfaceStations(spanSign, sideName)
+            Dim chordLength As Double = WingDefinition.GetChordAtSpanPosition(station.SpanPosition)
 
             aileronProfiles.Add(AddClosedSplitSkinProfile(part,
                                                           hybridShapeFactory,
                                                           targetSet,
-                                                          sideName & " aileron skin profile Rib_" & ribIndex.ToString("00"),
-                                                          sideName & "_Aileron_Skin_Rib_" & ribIndex.ToString("00"),
-                                                          spanPosition,
+                                                          sideName & " aileron skin profile " & station.Name,
+                                                          sideName & "_Aileron_Skin_" & station.Name,
+                                                          station.SpanPosition,
                                                           BuildAileronSkinProfileCoordinates(chordLength)))
         Next
 
@@ -582,16 +612,15 @@ Friend Module WingGenerator
                                                     ByVal sideName As String) As Object
         Dim sparProfiles As New List(Of WingStationProfile)()
 
-        For ribIndex As Integer = WingDefinition.AileronInnerRibIndex To WingDefinition.AileronOuterRibIndex
-            Dim spanPosition As Double = spanSign * WingDefinition.GetRibSpanPosition(ribIndex)
-            Dim chordLength As Double = WingDefinition.GetChordAtSpanPosition(spanPosition)
+        For Each station As WingStation In BuildAileronSurfaceStations(spanSign, sideName)
+            Dim chordLength As Double = WingDefinition.GetChordAtSpanPosition(station.SpanPosition)
 
             sparProfiles.Add(AddClosedSplitSkinProfile(part,
                                                        hybridShapeFactory,
                                                        targetSet,
-                                                       sideName & " rear hinge spar profile Rib_" & ribIndex.ToString("00"),
-                                                       sideName & "_Rear_Hinge_Spar_Rib_" & ribIndex.ToString("00"),
-                                                       spanPosition,
+                                                       sideName & " rear hinge spar profile " & station.Name,
+                                                       sideName & "_Rear_Hinge_Spar_" & station.Name,
+                                                       station.SpanPosition,
                                                        BuildAileronRearHingeSparProfileCoordinates(chordLength)))
         Next
 

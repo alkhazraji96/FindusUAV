@@ -17,14 +17,13 @@ Friend Module WingDefinition
     Friend Const MainSparCutoutDiameter As Double = 31.0
     Friend Const RibLighteningCutoutEdgeMargin As Double = 6.0
     Friend Const RibLighteningCutoutMinimumDiameter As Double = 8.0
-    Friend Const AileronInnerRibIndex As Integer = 8
-    Friend Const AileronOuterRibIndex As Integer = RibCountPerSide
+    Friend Const AileronSpanFraction As Double = 0.4
     Friend Const AileronFixedPanelEndX As Double = TipChord * 0.7
     Friend Const AileronRearSparWidth As Double = TipChord * 0.03
     Friend Const AileronRearSparEndX As Double = AileronFixedPanelEndX + AileronRearSparWidth
     Friend Const AileronClearanceGap As Double = TipChord * 0.02
     Friend Const AileronPanelStartX As Double = AileronRearSparEndX + AileronClearanceGap
-    Friend Const AileronRibStationTolerance As Double = 1.0
+    Friend Const AileronRibStationTolerance As Double = RibThickness / 2.0
 
     Friend ReadOnly Property MainSparInnerDiameter As Double
         Get
@@ -34,19 +33,19 @@ Friend Module WingDefinition
 
     Friend ReadOnly Property AileronSpanLength As Double
         Get
-            Return AileronOuterSpanPosition - AileronInnerSpanPosition
+            Return HalfSpan * AileronSpanFraction
         End Get
     End Property
 
     Friend ReadOnly Property AileronOuterSpanPosition As Double
         Get
-            Return GetRibSpanPosition(AileronOuterRibIndex)
+            Return HalfSpan
         End Get
     End Property
 
     Friend ReadOnly Property AileronInnerSpanPosition As Double
         Get
-            Return GetRibSpanPosition(AileronInnerRibIndex)
+            Return AileronOuterSpanPosition - AileronSpanLength
         End Get
     End Property
 
