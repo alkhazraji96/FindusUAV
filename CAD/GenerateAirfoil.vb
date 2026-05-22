@@ -4,31 +4,59 @@ Public Class GenerateAirfoil
     End Sub
 
     Public Shared Sub Run()
-        WingGenerator.CreateStage4CPhysicalRibsMainSparAndAilerons()
+        Run(WingConfiguration.CreateDefault())
+    End Sub
+
+    Friend Shared Sub Run(ByVal configuration As WingConfiguration)
+        WingGenerator.CreateStage4CPhysicalRibsMainSparAndAilerons(configuration)
     End Sub
 
     Public Shared Function CreateWingStage1Planform() As Object
-        Return WingGenerator.CreateStage1Planform()
+        Return CreateWingStage1Planform(WingConfiguration.CreateDefault())
+    End Function
+
+    Friend Shared Function CreateWingStage1Planform(ByVal configuration As WingConfiguration) As Object
+        Return WingGenerator.CreateStage1Planform(configuration)
     End Function
 
     Public Shared Function CreateWingStage2AirfoilStations() As Object
-        Return WingGenerator.CreateStage2AirfoilStations()
+        Return CreateWingStage2AirfoilStations(WingConfiguration.CreateDefault())
+    End Function
+
+    Friend Shared Function CreateWingStage2AirfoilStations(ByVal configuration As WingConfiguration) As Object
+        Return WingGenerator.CreateStage2AirfoilStations(configuration)
     End Function
 
     Public Shared Function CreateWingStage3OuterWingSkin() As Object
-        Return WingGenerator.CreateStage3OuterWingSkin()
+        Return CreateWingStage3OuterWingSkin(WingConfiguration.CreateDefault())
+    End Function
+
+    Friend Shared Function CreateWingStage3OuterWingSkin(ByVal configuration As WingConfiguration) As Object
+        Return WingGenerator.CreateStage3OuterWingSkin(configuration)
     End Function
 
     Public Shared Function CreateWingStage4APhysicalRibs() As Object
-        Return WingGenerator.CreateStage4APhysicalRibs()
+        Return CreateWingStage4APhysicalRibs(WingConfiguration.CreateDefault())
+    End Function
+
+    Friend Shared Function CreateWingStage4APhysicalRibs(ByVal configuration As WingConfiguration) As Object
+        Return WingGenerator.CreateStage4APhysicalRibs(configuration)
     End Function
 
     Public Shared Function CreateWingStage4BPhysicalRibsAndMainSpar() As Object
-        Return WingGenerator.CreateStage4BPhysicalRibsAndMainSpar()
+        Return CreateWingStage4BPhysicalRibsAndMainSpar(WingConfiguration.CreateDefault())
+    End Function
+
+    Friend Shared Function CreateWingStage4BPhysicalRibsAndMainSpar(ByVal configuration As WingConfiguration) As Object
+        Return WingGenerator.CreateStage4BPhysicalRibsAndMainSpar(configuration)
     End Function
 
     Public Shared Function CreateWingStage4CPhysicalRibsMainSparAndAilerons() As Object
-        Return WingGenerator.CreateStage4CPhysicalRibsMainSparAndAilerons()
+        Return CreateWingStage4CPhysicalRibsMainSparAndAilerons(WingConfiguration.CreateDefault())
+    End Function
+
+    Friend Shared Function CreateWingStage4CPhysicalRibsMainSparAndAilerons(ByVal configuration As WingConfiguration) As Object
+        Return WingGenerator.CreateStage4CPhysicalRibsMainSparAndAilerons(configuration)
     End Function
 
     Public Shared Function CreateNaca2412Part(Optional ByVal chordLength As Double = 100.0,

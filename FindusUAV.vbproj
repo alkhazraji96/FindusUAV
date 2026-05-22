@@ -73,11 +73,16 @@
     <Import Include="System.Threading.Tasks" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="CAD\AircraftConfiguration.vb" />
     <Compile Include="CAD\AirfoilCoordinate.vb" />
     <Compile Include="CAD\CatiaInterop.vb" />
+    <Compile Include="CAD\ConfigurationValidationResult.vb" />
     <Compile Include="CAD\GenerateAirfoil.vb" />
     <Compile Include="CAD\Naca2412SliceGenerator.vb" />
     <Compile Include="CAD\NacaAirfoil.vb" />
+    <Compile Include="CAD\NacaAirfoilParser.vb" />
+    <Compile Include="CAD\TailConfigurationValidator.vb" />
+    <Compile Include="CAD\WingConfigurationValidator.vb" />
     <Compile Include="CAD\WingDefinition.vb" />
     <Compile Include="CAD\WingGenerator.vb" />
     <Compile Include="CAD\WingStation.vb" />

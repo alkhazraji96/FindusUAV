@@ -22,29 +22,16 @@ Partial Class MainForm
     'Do not modify it using the code editor.
     <System.Diagnostics.DebuggerStepThrough()> _
     Private Sub InitializeComponent()
-        Me.btnRun = New System.Windows.Forms.Button()
         Me.SuspendLayout()
-        '
-        'btnRun
-        '
-        Me.btnRun.Location = New System.Drawing.Point(298, 173)
-        Me.btnRun.Name = "btnRun"
-        Me.btnRun.Size = New System.Drawing.Size(122, 67)
-        Me.btnRun.TabIndex = 0
-        Me.btnRun.Text = "Run"
-        Me.btnRun.UseVisualStyleBackColor = True
         '
         'MainForm
         '
         Me.AutoScaleDimensions = New System.Drawing.SizeF(8.0!, 16.0!)
         Me.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font
         Me.ClientSize = New System.Drawing.Size(800, 450)
-        Me.Controls.Add(Me.btnRun)
         Me.Name = "MainForm"
-        Me.Text = "UAV Desgin Tool"
+        Me.Text = "UAV Design Tool"
         Me.ResumeLayout(False)
 
     End Sub
-
-    Friend WithEvents btnRun As Button
 End Class
