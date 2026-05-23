@@ -6,6 +6,10 @@ Imports KnowledgewareTypeLib
 Imports System.Runtime.InteropServices
 
 Public Class TailGenerator
+    Private Const TailMainSparChordFraction As Double = 0.25
+    Private Const ForwardLighteningCutoutChordFraction As Double = 0.35
+    Private Const MiddleLighteningCutoutChordFraction As Double = 0.48
+    Private Const AftLighteningCutoutChordFraction As Double = 0.6
 
     ' =====================================================
     ' MAIN RUN FUNCTION (Now Shared)
@@ -117,7 +121,7 @@ Public Class TailGenerator
 
             ' 1. STRUCTURAL RIB
             Dim isEdgeRib As Boolean = (i = 0 OrElse i = horizRibCount - 1)
-            Dim structSketch = DrawRibSketch(activePart, localPlaneRef, mainPts, "Horiz_StructRib_" & i, "Horizontal", Not isEdgeRib, horizOffset, horizChord)
+            Dim structSketch = DrawRibSketch(activePart, localPlaneRef, mainPts, "Horiz_StructRib_" & i, "Horizontal", Not isEdgeRib, horizOffset, horizChord, horizontalAirfoil)
 
             activePart.InWorkObject = activePart.MainBody
             Dim pad As Pad = shapeFactory.AddNewPad(structSketch, ribThickness)
@@ -136,8 +140,9 @@ Public Class TailGenerator
         Next
 
         ' A. MAIN CYLINDRICAL SPAR (Horizontal)
-        Dim hMainX As Double = horizOffset + (horizChord * 0.25)
-        Dim hMainSparSk = DrawCylinderSketch(activePart, zxPlaneRef, hMainX, 0.0, 0.0, mainSparRadius, "Horiz_Main_Spar_Cyl", "Horizontal")
+        Dim hMainX As Double = horizOffset + (horizChord * TailMainSparChordFraction)
+        Dim hMainCamberY As Double = GetAirfoilMeanCamberY(horizChord, horizontalAirfoil, TailMainSparChordFraction)
+        Dim hMainSparSk = DrawCylinderSketch(activePart, zxPlaneRef, hMainX, 0.0, hMainCamberY, mainSparRadius, "Horiz_Main_Spar_Cyl", "Horizontal")
         activePart.InWorkObject = activePart.MainBody
         Dim hMainSparPad As Pad = shapeFactory.AddNewPad(hMainSparSk, horizHalfSpan)
         hMainSparPad.SecondLimit.Dimension.Value = horizHalfSpan
@@ -174,7 +179,7 @@ Public Class TailGenerator
 
             ' 1. STRUCTURAL RIB 
             Dim isEdgeRib As Boolean = (i = 0 OrElse i = vertRibCount - 1)
-            Dim structSketch = DrawRibSketch(activePart, localPlaneRef, mainPts, "Vert_StructRib_" & i, "Vertical", Not isEdgeRib, localOffset, localChord)
+            Dim structSketch = DrawRibSketch(activePart, localPlaneRef, mainPts, "Vert_StructRib_" & i, "Vertical", Not isEdgeRib, localOffset, localChord, verticalAirfoil)
 
             activePart.InWorkObject = activePart.MainBody
             Dim pad As Pad = shapeFactory.AddNewPad(structSketch, ribThickness)
@@ -197,10 +202,12 @@ Public Class TailGenerator
         Dim vertTipPlaneRef As Reference = activePart.CreateReferenceFromObject(vertTipPlane)
 
         ' A. MAIN CYLINDRICAL SPAR (Vertical - Tapered Loft)
-        Dim vMainRootX As Double = vertRootOffset + (vertRootChord * 0.25)
-        Dim vMainTipX As Double = vertTipOffset + (vertTipChord * 0.25)
-        Dim vMainSparRootSk = DrawCylinderSketch(activePart, xyPlaneRef, vMainRootX, 0.0, 0.0, mainSparRadius, "Vert_Main_Spar_Root", "Vertical")
-        Dim vMainSparTipSk = DrawCylinderSketch(activePart, vertTipPlaneRef, vMainTipX, 0.0, vertSpan, mainSparRadius, "Vert_Main_Spar_Tip", "Vertical")
+        Dim vMainRootX As Double = vertRootOffset + (vertRootChord * TailMainSparChordFraction)
+        Dim vMainTipX As Double = vertTipOffset + (vertTipChord * TailMainSparChordFraction)
+        Dim vMainRootCamberY As Double = GetAirfoilMeanCamberY(vertRootChord, verticalAirfoil, TailMainSparChordFraction)
+        Dim vMainTipCamberY As Double = GetAirfoilMeanCamberY(vertTipChord, verticalAirfoil, TailMainSparChordFraction)
+        Dim vMainSparRootSk = DrawCylinderSketch(activePart, xyPlaneRef, vMainRootX, vMainRootCamberY, 0.0, mainSparRadius, "Vert_Main_Spar_Root", "Vertical")
+        Dim vMainSparTipSk = DrawCylinderSketch(activePart, vertTipPlaneRef, vMainTipX, vMainTipCamberY, vertSpan, mainSparRadius, "Vert_Main_Spar_Tip", "Vertical")
         CreateSolidLoftSecurely(activePart, hybridShapeFactory, skinSet, vMainSparRootSk, vMainSparTipSk, "Vertical_Main_Spar")
 
         ' B. REAR HINGE SPAR (Vertical)
@@ -345,7 +352,7 @@ Public Class TailGenerator
         Return sketch
     End Function
 
-    Private Shared Function DrawRibSketch(activePart As Part, planeRef As Reference, points As List(Of Point3D), name As String, tailType As String, drawHoles As Boolean, offset As Double, chord As Double) As Sketch
+    Private Shared Function DrawRibSketch(activePart As Part, planeRef As Reference, points As List(Of Point3D), name As String, tailType As String, drawHoles As Boolean, offset As Double, chord As Double, Optional airfoil As AirfoilConfiguration = Nothing) As Sketch
         Dim sketch As Sketch = activePart.MainBody.Sketches.Add(planeRef)
         sketch.Name = name
         Dim factory2D As Factory2D = sketch.OpenEdition()
@@ -375,24 +382,61 @@ Public Class TailGenerator
             Dim r2 As Double = chord * 0.035
             Dim r3 As Double = chord * 0.025
 
-            Dim c1X As Double = offset + (chord * 0.35)
-            Dim c2X As Double = offset + (chord * 0.48)
-            Dim c3X As Double = offset + (chord * 0.6)
+            Dim c1X As Double = offset + (chord * ForwardLighteningCutoutChordFraction)
+            Dim c2X As Double = offset + (chord * MiddleLighteningCutoutChordFraction)
+            Dim c3X As Double = offset + (chord * AftLighteningCutoutChordFraction)
+
+            Dim c1Y As Double = GetAirfoilMeanCamberY(chord, airfoil, ForwardLighteningCutoutChordFraction)
+            Dim c2Y As Double = GetAirfoilMeanCamberY(chord, airfoil, MiddleLighteningCutoutChordFraction)
+            Dim c3Y As Double = GetAirfoilMeanCamberY(chord, airfoil, AftLighteningCutoutChordFraction)
 
             If tailType = "Horizontal" Then
-                factory2D.CreateClosedCircle(0, c1X, r1)
-                factory2D.CreateClosedCircle(0, c2X, r2)
-                factory2D.CreateClosedCircle(0, c3X, r3)
+                factory2D.CreateClosedCircle(c1Y, c1X, r1)
+                factory2D.CreateClosedCircle(c2Y, c2X, r2)
+                factory2D.CreateClosedCircle(c3Y, c3X, r3)
             Else
-                factory2D.CreateClosedCircle(c1X, 0, r1)
-                factory2D.CreateClosedCircle(c2X, 0, r2)
-                factory2D.CreateClosedCircle(c3X, 0, r3)
+                factory2D.CreateClosedCircle(c1X, c1Y, r1)
+                factory2D.CreateClosedCircle(c2X, c2Y, r2)
+                factory2D.CreateClosedCircle(c3X, c3Y, r3)
             End If
         End If
 
         sketch.CloseEdition()
         activePart.UpdateObject(sketch)
         Return sketch
+    End Function
+
+    Private Shared Function GetAirfoilMeanCamberY(ByVal chord As Double,
+                                                  ByVal airfoil As AirfoilConfiguration,
+                                                  ByVal chordFraction As Double) As Double
+        If airfoil Is Nothing OrElse
+            chord <= 0.0 OrElse
+            chordFraction <= 0.0 OrElse
+            chordFraction >= 1.0 OrElse
+            airfoil.MaximumCamber <= 0.0 OrElse
+            airfoil.MaximumCamberPosition <= 0.0 Then
+            Return 0.0
+        End If
+
+        Dim normalizedCamber As Double = 0.0
+
+        If chordFraction <= airfoil.MaximumCamberPosition Then
+            normalizedCamber = (airfoil.MaximumCamber / Math.Pow(airfoil.MaximumCamberPosition, 2.0)) *
+                ((2.0 * airfoil.MaximumCamberPosition * chordFraction) - Math.Pow(chordFraction, 2.0))
+        Else
+            Dim aftCamberLength As Double = 1.0 - airfoil.MaximumCamberPosition
+
+            If aftCamberLength <= 0.0 Then
+                Return 0.0
+            End If
+
+            normalizedCamber = (airfoil.MaximumCamber / Math.Pow(aftCamberLength, 2.0)) *
+                ((1.0 - (2.0 * airfoil.MaximumCamberPosition)) +
+                 (2.0 * airfoil.MaximumCamberPosition * chordFraction) -
+                 Math.Pow(chordFraction, 2.0))
+        End If
+
+        Return normalizedCamber * chord
     End Function
 
     Private Shared Sub CreateSolidLoftSecurely(activePart As Part, factory As HybridShapeFactory, skinSet As HybridBody, rootSketch As Sketch, tipSketch As Sketch, name As String)
