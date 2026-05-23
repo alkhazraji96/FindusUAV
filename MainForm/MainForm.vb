@@ -3,6 +3,8 @@ Public Class MainForm
     Private btnGenerateWing As Button
     Private btnGenerateTail As Button
     Private btnResetDefaults As Button
+    Private progressGeneration As ProgressBar
+    Private lblGenerationStatus As Label
     Private currentConfiguration As AircraftConfiguration
 
     Private numWingFullSpan As NumericUpDown
@@ -51,9 +53,13 @@ Public Class MainForm
                 Return
             End If
 
-            GenerateAirfoil.Run(currentConfiguration.Wing)
+            BeginGeneration("Generating wing...")
+            GenerateAirfoil.Run(currentConfiguration.Wing, CreateUiProgressReporter())
         Catch ex As Exception
+            SetGenerationFailed(ex.Message)
             ShowGenerationError(ex)
+        Finally
+            EndGeneration()
         End Try
     End Sub
 
@@ -68,9 +74,13 @@ Public Class MainForm
                 Return
             End If
 
-            TailGenerator.Run(currentConfiguration.Tail)
+            BeginGeneration("Generating tail...")
+            TailGenerator.Run(currentConfiguration.Tail, CreateUiProgressReporter())
         Catch ex As Exception
+            SetGenerationFailed(ex.Message)
             ShowGenerationError(ex)
+        Finally
+            EndGeneration()
         End Try
     End Sub
 
@@ -89,10 +99,11 @@ Public Class MainForm
 
         Dim rootLayout As New TableLayoutPanel()
         rootLayout.ColumnCount = 1
-        rootLayout.RowCount = 2
+        rootLayout.RowCount = 3
         rootLayout.Dock = DockStyle.Fill
         rootLayout.Padding = New Padding(12)
         rootLayout.RowStyles.Add(New RowStyle(SizeType.Percent, 100.0!))
+        rootLayout.RowStyles.Add(New RowStyle(SizeType.Absolute, 52.0!))
         rootLayout.RowStyles.Add(New RowStyle(SizeType.Absolute, 56.0!))
 
         tabConfiguration = New TabControl()
@@ -129,11 +140,42 @@ Public Class MainForm
         footerLayout.Controls.Add(btnResetDefaults)
 
         rootLayout.Controls.Add(tabConfiguration, 0, 0)
-        rootLayout.Controls.Add(footerLayout, 0, 1)
+        rootLayout.Controls.Add(CreateProgressPanel(), 0, 1)
+        rootLayout.Controls.Add(footerLayout, 0, 2)
 
         Me.Controls.Add(rootLayout)
         Me.ResumeLayout(False)
     End Sub
+
+    Private Function CreateProgressPanel() As TableLayoutPanel
+        Dim progressLayout As New TableLayoutPanel()
+        progressLayout.ColumnCount = 1
+        progressLayout.RowCount = 2
+        progressLayout.Dock = DockStyle.Fill
+        progressLayout.Padding = New Padding(0, 6, 0, 2)
+        progressLayout.RowStyles.Add(New RowStyle(SizeType.Absolute, 22.0!))
+        progressLayout.RowStyles.Add(New RowStyle(SizeType.Percent, 100.0!))
+
+        lblGenerationStatus = New Label()
+        lblGenerationStatus.Text = "Ready"
+        lblGenerationStatus.AutoEllipsis = True
+        lblGenerationStatus.Dock = DockStyle.Fill
+        lblGenerationStatus.TextAlign = ContentAlignment.MiddleLeft
+        lblGenerationStatus.Margin = New Padding(0, 0, 0, 2)
+
+        progressGeneration = New ProgressBar()
+        progressGeneration.Dock = DockStyle.Fill
+        progressGeneration.Minimum = 0
+        progressGeneration.Maximum = 100
+        progressGeneration.Value = 0
+        progressGeneration.Style = ProgressBarStyle.Continuous
+        progressGeneration.Margin = New Padding(0)
+
+        progressLayout.Controls.Add(lblGenerationStatus, 0, 0)
+        progressLayout.Controls.Add(progressGeneration, 0, 1)
+
+        Return progressLayout
+    End Function
 
     Private Function CreateWingTab() As TabPage
         Dim tabPage As New TabPage("Wing")
@@ -560,6 +602,142 @@ Public Class MainForm
         ElseIf firstError.FieldName.StartsWith("Tail", StringComparison.OrdinalIgnoreCase) Then
             tabConfiguration.SelectedIndex = 1
         End If
+    End Sub
+
+    Private Function CreateUiProgressReporter() As IGenerationProgressReporter
+        Return New ActionGenerationProgressReporter(AddressOf UpdateGenerationProgress)
+    End Function
+
+    Private Sub BeginGeneration(ByVal statusText As String)
+        SetGenerationControlsEnabled(False)
+
+        If progressGeneration IsNot Nothing Then
+            progressGeneration.Style = ProgressBarStyle.Marquee
+            progressGeneration.MarqueeAnimationSpeed = 30
+        End If
+
+        If lblGenerationStatus IsNot Nothing Then
+            lblGenerationStatus.Text = statusText
+        End If
+
+        RefreshGenerationProgressUi()
+    End Sub
+
+    Private Sub EndGeneration()
+        SetGenerationControlsEnabled(True)
+        RefreshGenerationProgressUi()
+    End Sub
+
+    Private Sub SetGenerationFailed(ByVal message As String)
+        If String.IsNullOrWhiteSpace(message) Then
+            message = "Generation failed before completion."
+        Else
+            message = "Generation failed before completion. " & message
+        End If
+
+        UpdateGenerationProgress(GenerationProgressUpdate.CreateFailed("Generation", message))
+    End Sub
+
+    Private Sub SetGenerationControlsEnabled(ByVal enabled As Boolean)
+        If tabConfiguration IsNot Nothing Then
+            tabConfiguration.Enabled = enabled
+        End If
+
+        If btnGenerateWing IsNot Nothing Then
+            btnGenerateWing.Enabled = enabled
+        End If
+
+        If btnGenerateTail IsNot Nothing Then
+            btnGenerateTail.Enabled = enabled
+        End If
+
+        If btnResetDefaults IsNot Nothing Then
+            btnResetDefaults.Enabled = enabled
+        End If
+
+        Cursor = If(enabled, Cursors.Default, Cursors.WaitCursor)
+    End Sub
+
+    Private Sub UpdateGenerationProgress(ByVal progressUpdate As GenerationProgressUpdate)
+        If progressUpdate Is Nothing OrElse IsDisposed Then
+            Return
+        End If
+
+        If InvokeRequired Then
+            If IsHandleCreated Then
+                BeginInvoke(New Action(Of GenerationProgressUpdate)(AddressOf UpdateGenerationProgress),
+                            progressUpdate)
+            End If
+
+            Return
+        End If
+
+        If lblGenerationStatus IsNot Nothing Then
+            lblGenerationStatus.Text = FormatProgressStatus(progressUpdate)
+        End If
+
+        UpdateProgressBar(progressUpdate)
+        RefreshGenerationProgressUi()
+    End Sub
+
+    Private Function FormatProgressStatus(ByVal progressUpdate As GenerationProgressUpdate) As String
+        Dim statusText As String = progressUpdate.ToString()
+
+        If progressUpdate.Phase = GenerationProgressPhase.Running AndAlso
+            Not progressUpdate.IsIndeterminate AndAlso
+            progressUpdate.TotalSteps > 0 Then
+            statusText &= " (" &
+                progressUpdate.CurrentStep.ToString() &
+                "/" &
+                progressUpdate.TotalSteps.ToString() &
+                ")"
+        End If
+
+        Return statusText
+    End Function
+
+    Private Sub UpdateProgressBar(ByVal progressUpdate As GenerationProgressUpdate)
+        If progressGeneration Is Nothing Then
+            Return
+        End If
+
+        If progressUpdate.Phase = GenerationProgressPhase.Completed Then
+            progressGeneration.MarqueeAnimationSpeed = 0
+            progressGeneration.Style = ProgressBarStyle.Continuous
+            progressGeneration.Value = progressGeneration.Maximum
+            Return
+        End If
+
+        If progressUpdate.Phase = GenerationProgressPhase.Failed Then
+            progressGeneration.MarqueeAnimationSpeed = 0
+            progressGeneration.Style = ProgressBarStyle.Continuous
+            progressGeneration.Value = progressGeneration.Minimum
+            Return
+        End If
+
+        If progressUpdate.IsIndeterminate Then
+            progressGeneration.Style = ProgressBarStyle.Marquee
+            progressGeneration.MarqueeAnimationSpeed = 30
+            Return
+        End If
+
+        progressGeneration.MarqueeAnimationSpeed = 0
+        progressGeneration.Style = ProgressBarStyle.Continuous
+        progressGeneration.Value = Math.Min(progressGeneration.Maximum,
+                                            Math.Max(progressGeneration.Minimum,
+                                                     progressUpdate.PercentComplete))
+    End Sub
+
+    Private Sub RefreshGenerationProgressUi()
+        If lblGenerationStatus IsNot Nothing Then
+            lblGenerationStatus.Refresh()
+        End If
+
+        If progressGeneration IsNot Nothing Then
+            progressGeneration.Refresh()
+        End If
+
+        Application.DoEvents()
     End Sub
 
     Private Sub ShowGenerationError(ByVal ex As Exception)

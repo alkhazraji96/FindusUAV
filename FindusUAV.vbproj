@@ -77,6 +77,7 @@
     <Compile Include="CAD\AirfoilCoordinate.vb" />
     <Compile Include="CAD\CatiaInterop.vb" />
     <Compile Include="CAD\ConfigurationValidationResult.vb" />
+    <Compile Include="CAD\GenerationProgress.vb" />
     <Compile Include="CAD\GenerateAirfoil.vb" />
     <Compile Include="CAD\Naca2412SliceGenerator.vb" />
     <Compile Include="CAD\NacaAirfoil.vb" />
