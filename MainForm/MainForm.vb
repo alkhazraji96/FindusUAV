@@ -3,9 +3,14 @@ Public Class MainForm
     Private btnGenerateWing As Button
     Private btnGenerateTail As Button
     Private btnResetDefaults As Button
+    Private cmbConfigurationPreset As ComboBox
+    Private btnSavePreset As Button
+    Private btnLoadPreset As Button
+    Private btnDeletePreset As Button
     Private progressGeneration As ProgressBar
     Private lblGenerationStatus As Label
     Private currentConfiguration As AircraftConfiguration
+    Private presetRepository As ConfigurationPresetRepository
 
     Private numWingFullSpan As NumericUpDown
     Private numWingRootChord As NumericUpDown
@@ -38,8 +43,10 @@ Public Class MainForm
 
     Public Sub New()
         InitializeComponent()
+        presetRepository = New ConfigurationPresetRepository()
         BuildConfigurationUi()
-        LoadDefaultConfigurationValues()
+        LoadInitialConfigurationValues()
+        AddHandler Me.FormClosing, AddressOf MainForm_FormClosing
     End Sub
 
     Private Sub btnGenerateWing_Click(sender As Object, e As EventArgs)
@@ -53,6 +60,7 @@ Public Class MainForm
                 Return
             End If
 
+            SaveLastUsedConfiguration(currentConfiguration)
             BeginGeneration("Generating wing...")
             GenerateAirfoil.Run(currentConfiguration.Wing, CreateUiProgressReporter())
         Catch ex As Exception
@@ -74,6 +82,7 @@ Public Class MainForm
                 Return
             End If
 
+            SaveLastUsedConfiguration(currentConfiguration)
             BeginGeneration("Generating tail...")
             TailGenerator.Run(currentConfiguration.Tail, CreateUiProgressReporter())
         Catch ex As Exception
@@ -88,6 +97,98 @@ Public Class MainForm
         LoadDefaultConfigurationValues()
     End Sub
 
+    Private Sub btnSavePreset_Click(sender As Object, e As EventArgs)
+        Dim presetName As String = GetPresetNameInput()
+        Dim failureMessage As String = String.Empty
+        Dim normalizedPresetName As String = String.Empty
+
+        If Not ConfigurationPresetRepository.TryNormalizeNamedPresetName(presetName,
+                                                                         normalizedPresetName,
+                                                                         failureMessage) Then
+            ShowPresetStorageError(failureMessage)
+            Return
+        End If
+
+        currentConfiguration = CreateConfigurationFromInputs()
+
+        Dim validationResult As ConfigurationValidationResult =
+            ValidateAircraftConfiguration(currentConfiguration)
+
+        If Not ConfirmConfigurationCanGenerate(validationResult) Then
+            Return
+        End If
+
+        If Not presetRepository.TrySaveNamedPreset(normalizedPresetName,
+                                                  currentConfiguration,
+                                                  failureMessage) Then
+            ShowPresetStorageError(failureMessage)
+            Return
+        End If
+
+        SaveLastUsedConfiguration(currentConfiguration)
+        RefreshPresetList(normalizedPresetName)
+        SetGenerationStatus("Saved preset '" & normalizedPresetName & "'.")
+    End Sub
+
+    Private Sub btnLoadPreset_Click(sender As Object, e As EventArgs)
+        Dim presetName As String = GetPresetNameInput()
+        Dim storedConfiguration As AircraftConfiguration = Nothing
+        Dim failureMessage As String = String.Empty
+
+        If Not presetRepository.TryLoadNamedPreset(presetName,
+                                                  storedConfiguration,
+                                                  failureMessage) Then
+            ShowPresetStorageError(failureMessage)
+            Return
+        End If
+
+        Dim validationMessage As String = String.Empty
+
+        If Not CanLoadStoredConfiguration(storedConfiguration, validationMessage) Then
+            ShowPresetStorageError(validationMessage)
+            Return
+        End If
+
+        ApplyConfigurationToInputs(storedConfiguration)
+        SaveLastUsedConfiguration(storedConfiguration)
+        RefreshPresetList(presetName)
+        SetGenerationStatus("Loaded preset '" & presetName.Trim() & "'.")
+    End Sub
+
+    Private Sub btnDeletePreset_Click(sender As Object, e As EventArgs)
+        Dim presetName As String = GetPresetNameInput()
+        Dim failureMessage As String = String.Empty
+        Dim normalizedPresetName As String = String.Empty
+
+        If Not ConfigurationPresetRepository.TryNormalizeNamedPresetName(presetName,
+                                                                         normalizedPresetName,
+                                                                         failureMessage) Then
+            ShowPresetStorageError(failureMessage)
+            Return
+        End If
+
+        If MessageBox.Show(Me,
+                           "Delete preset '" & normalizedPresetName & "'?",
+                           "Delete Preset",
+                           MessageBoxButtons.YesNo,
+                           MessageBoxIcon.Warning,
+                           MessageBoxDefaultButton.Button2) <> DialogResult.Yes Then
+            Return
+        End If
+
+        If Not presetRepository.TryDeleteNamedPreset(normalizedPresetName, failureMessage) Then
+            ShowPresetStorageError(failureMessage)
+            Return
+        End If
+
+        RefreshPresetList(String.Empty)
+        SetGenerationStatus("Deleted preset '" & normalizedPresetName & "'.")
+    End Sub
+
+    Private Sub MainForm_FormClosing(sender As Object, e As FormClosingEventArgs)
+        TrySaveCurrentInputsSilently()
+    End Sub
+
     Private Sub BuildConfigurationUi()
         Me.SuspendLayout()
         Me.Controls.Clear()
@@ -99,10 +200,11 @@ Public Class MainForm
 
         Dim rootLayout As New TableLayoutPanel()
         rootLayout.ColumnCount = 1
-        rootLayout.RowCount = 3
+        rootLayout.RowCount = 4
         rootLayout.Dock = DockStyle.Fill
         rootLayout.Padding = New Padding(12)
         rootLayout.RowStyles.Add(New RowStyle(SizeType.Percent, 100.0!))
+        rootLayout.RowStyles.Add(New RowStyle(SizeType.Absolute, 44.0!))
         rootLayout.RowStyles.Add(New RowStyle(SizeType.Absolute, 52.0!))
         rootLayout.RowStyles.Add(New RowStyle(SizeType.Absolute, 56.0!))
 
@@ -140,12 +242,62 @@ Public Class MainForm
         footerLayout.Controls.Add(btnResetDefaults)
 
         rootLayout.Controls.Add(tabConfiguration, 0, 0)
-        rootLayout.Controls.Add(CreateProgressPanel(), 0, 1)
-        rootLayout.Controls.Add(footerLayout, 0, 2)
+        rootLayout.Controls.Add(CreatePresetPanel(), 0, 1)
+        rootLayout.Controls.Add(CreateProgressPanel(), 0, 2)
+        rootLayout.Controls.Add(footerLayout, 0, 3)
 
         Me.Controls.Add(rootLayout)
         Me.ResumeLayout(False)
     End Sub
+
+    Private Function CreatePresetPanel() As TableLayoutPanel
+        Dim presetLayout As New TableLayoutPanel()
+        presetLayout.ColumnCount = 5
+        presetLayout.RowCount = 1
+        presetLayout.Dock = DockStyle.Fill
+        presetLayout.Padding = New Padding(0, 6, 0, 4)
+        presetLayout.ColumnStyles.Add(New ColumnStyle(SizeType.Absolute, 56.0!))
+        presetLayout.ColumnStyles.Add(New ColumnStyle(SizeType.Percent, 100.0!))
+        presetLayout.ColumnStyles.Add(New ColumnStyle(SizeType.Absolute, 92.0!))
+        presetLayout.ColumnStyles.Add(New ColumnStyle(SizeType.Absolute, 92.0!))
+        presetLayout.ColumnStyles.Add(New ColumnStyle(SizeType.Absolute, 92.0!))
+
+        Dim presetLabel As New Label()
+        presetLabel.Text = "Preset"
+        presetLabel.Dock = DockStyle.Fill
+        presetLabel.TextAlign = ContentAlignment.MiddleLeft
+        presetLabel.Margin = New Padding(0, 0, 8, 0)
+
+        cmbConfigurationPreset = New ComboBox()
+        cmbConfigurationPreset.Dock = DockStyle.Fill
+        cmbConfigurationPreset.DropDownStyle = ComboBoxStyle.DropDown
+        cmbConfigurationPreset.Margin = New Padding(0, 0, 8, 0)
+
+        btnSavePreset = CreatePresetButton("Save")
+        AddHandler btnSavePreset.Click, AddressOf btnSavePreset_Click
+
+        btnLoadPreset = CreatePresetButton("Load")
+        AddHandler btnLoadPreset.Click, AddressOf btnLoadPreset_Click
+
+        btnDeletePreset = CreatePresetButton("Delete")
+        AddHandler btnDeletePreset.Click, AddressOf btnDeletePreset_Click
+
+        presetLayout.Controls.Add(presetLabel, 0, 0)
+        presetLayout.Controls.Add(cmbConfigurationPreset, 1, 0)
+        presetLayout.Controls.Add(btnSavePreset, 2, 0)
+        presetLayout.Controls.Add(btnLoadPreset, 3, 0)
+        presetLayout.Controls.Add(btnDeletePreset, 4, 0)
+
+        Return presetLayout
+    End Function
+
+    Private Function CreatePresetButton(ByVal text As String) As Button
+        Dim button As New Button()
+        button.Text = text
+        button.Dock = DockStyle.Fill
+        button.Margin = New Padding(4, 0, 0, 0)
+        Return button
+    End Function
 
     Private Function CreateProgressPanel() As TableLayoutPanel
         Dim progressLayout As New TableLayoutPanel()
@@ -426,8 +578,45 @@ Public Class MainForm
         Return checkBox
     End Function
 
+    Private Sub LoadInitialConfigurationValues()
+        Dim storedConfiguration As AircraftConfiguration = Nothing
+        Dim failureMessage As String = String.Empty
+
+        If presetRepository IsNot Nothing AndAlso
+            presetRepository.TryLoadLastUsed(storedConfiguration, failureMessage) Then
+
+            Dim validationMessage As String = String.Empty
+
+            If CanLoadStoredConfiguration(storedConfiguration, validationMessage) Then
+                ApplyConfigurationToInputs(storedConfiguration)
+                RefreshPresetList()
+                SetGenerationStatus("Loaded last used preset.")
+                Return
+            End If
+
+            ApplyConfigurationToInputs(AircraftConfiguration.CreateDefault())
+            RefreshPresetList()
+            SetGenerationStatus(validationMessage)
+            Return
+        End If
+
+        ApplyConfigurationToInputs(AircraftConfiguration.CreateDefault())
+        RefreshPresetList()
+
+        If Not String.IsNullOrWhiteSpace(failureMessage) Then
+            SetGenerationStatus("Defaults loaded. Preset storage unavailable: " & failureMessage)
+        Else
+            SetGenerationStatus("Ready")
+        End If
+    End Sub
+
     Private Sub LoadDefaultConfigurationValues()
-        Dim configuration As AircraftConfiguration = AircraftConfiguration.CreateDefault()
+        ApplyConfigurationToInputs(AircraftConfiguration.CreateDefault())
+        SetPresetNameInput(String.Empty)
+        SetGenerationStatus("Ready")
+    End Sub
+
+    Private Sub ApplyConfigurationToInputs(ByVal configuration As AircraftConfiguration)
         currentConfiguration = configuration
 
         Dim wing As WingConfiguration = configuration.Wing
@@ -471,6 +660,133 @@ Public Class MainForm
         configuration.Tail = CreateTailConfigurationFromInputs()
         Return configuration
     End Function
+
+    Private Function ValidateAircraftConfiguration(ByVal configuration As AircraftConfiguration) As ConfigurationValidationResult
+        Dim validationResult As New ConfigurationValidationResult()
+
+        If configuration Is Nothing Then
+            validationResult.AddError("Configuration", "No configuration was provided.")
+            Return validationResult
+        End If
+
+        validationResult.Merge(WingConfigurationValidator.Validate(configuration.Wing))
+        validationResult.Merge(TailConfigurationValidator.Validate(configuration.Tail))
+
+        Return validationResult
+    End Function
+
+    Private Function CanLoadStoredConfiguration(ByVal configuration As AircraftConfiguration,
+                                                ByRef validationMessage As String) As Boolean
+        validationMessage = String.Empty
+
+        If configuration Is Nothing Then
+            validationMessage = "Defaults loaded. Stored preset was empty."
+            Return False
+        End If
+
+        Dim firstError As ConfigurationValidationMessage = GetFirstConfigurationError(configuration)
+
+        If firstError IsNot Nothing Then
+            validationMessage = "Defaults loaded. Stored preset is invalid: " & firstError.ToString()
+            Return False
+        End If
+
+        Return True
+    End Function
+
+    Private Function IsConfigurationValid(ByVal configuration As AircraftConfiguration) As Boolean
+        If configuration Is Nothing Then
+            Return False
+        End If
+
+        Return GetFirstConfigurationError(configuration) Is Nothing
+    End Function
+
+    Private Function GetFirstConfigurationError(ByVal configuration As AircraftConfiguration) As ConfigurationValidationMessage
+        Return ValidateAircraftConfiguration(configuration).Errors.FirstOrDefault()
+    End Function
+
+    Private Sub SaveLastUsedConfiguration(ByVal configuration As AircraftConfiguration)
+        If presetRepository Is Nothing Then
+            Return
+        End If
+
+        Dim failureMessage As String = String.Empty
+
+        If Not presetRepository.TrySaveLastUsed(configuration, failureMessage) Then
+            SetGenerationStatus("Preset storage unavailable: " & failureMessage)
+        End If
+    End Sub
+
+    Private Sub TrySaveCurrentInputsSilently()
+        If presetRepository Is Nothing Then
+            Return
+        End If
+
+        Try
+            Dim configuration As AircraftConfiguration = CreateConfigurationFromInputs()
+
+            If IsConfigurationValid(configuration) Then
+                Dim failureMessage As String = String.Empty
+                presetRepository.TrySaveLastUsed(configuration, failureMessage)
+            End If
+        Catch
+        End Try
+    End Sub
+
+    Private Function GetPresetNameInput() As String
+        If cmbConfigurationPreset Is Nothing Then
+            Return String.Empty
+        End If
+
+        Return If(cmbConfigurationPreset.Text, String.Empty).Trim()
+    End Function
+
+    Private Sub SetPresetNameInput(ByVal presetName As String)
+        If cmbConfigurationPreset IsNot Nothing Then
+            cmbConfigurationPreset.Text = If(presetName, String.Empty)
+        End If
+    End Sub
+
+    Private Sub RefreshPresetList(Optional ByVal selectedPresetName As String = Nothing)
+        If cmbConfigurationPreset Is Nothing OrElse presetRepository Is Nothing Then
+            Return
+        End If
+
+        Dim previousText As String =
+            If(selectedPresetName,
+               If(cmbConfigurationPreset.Text, String.Empty))
+        Dim presetNames As List(Of String) = Nothing
+        Dim failureMessage As String = String.Empty
+
+        If Not presetRepository.TryListNamedPresets(presetNames, failureMessage) Then
+            SetGenerationStatus("Preset list unavailable: " & failureMessage)
+            Return
+        End If
+
+        cmbConfigurationPreset.BeginUpdate()
+        cmbConfigurationPreset.Items.Clear()
+
+        For Each presetName As String In presetNames
+            cmbConfigurationPreset.Items.Add(presetName)
+        Next
+
+        cmbConfigurationPreset.EndUpdate()
+        SetPresetNameInput(previousText)
+    End Sub
+
+    Private Sub ShowPresetStorageError(ByVal message As String)
+        If String.IsNullOrWhiteSpace(message) Then
+            message = "Preset storage failed."
+        End If
+
+        SetGenerationStatus("Preset storage failed.")
+        MessageBox.Show(Me,
+                        message,
+                        "Preset Storage",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Warning)
+    End Sub
 
     Private Function CreateWingConfigurationFromInputs() As WingConfiguration
         Dim wing As WingConfiguration = WingConfiguration.CreateDefault()
@@ -608,6 +924,13 @@ Public Class MainForm
         Return New ActionGenerationProgressReporter(AddressOf UpdateGenerationProgress)
     End Function
 
+    Private Sub SetGenerationStatus(ByVal statusText As String)
+        If lblGenerationStatus IsNot Nothing Then
+            lblGenerationStatus.Text = statusText
+            lblGenerationStatus.Refresh()
+        End If
+    End Sub
+
     Private Sub BeginGeneration(ByVal statusText As String)
         SetGenerationControlsEnabled(False)
 
@@ -653,6 +976,22 @@ Public Class MainForm
 
         If btnResetDefaults IsNot Nothing Then
             btnResetDefaults.Enabled = enabled
+        End If
+
+        If cmbConfigurationPreset IsNot Nothing Then
+            cmbConfigurationPreset.Enabled = enabled
+        End If
+
+        If btnSavePreset IsNot Nothing Then
+            btnSavePreset.Enabled = enabled
+        End If
+
+        If btnLoadPreset IsNot Nothing Then
+            btnLoadPreset.Enabled = enabled
+        End If
+
+        If btnDeletePreset IsNot Nothing Then
+            btnDeletePreset.Enabled = enabled
         End If
 
         Cursor = If(enabled, Cursors.Default, Cursors.WaitCursor)
