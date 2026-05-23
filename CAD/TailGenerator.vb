@@ -6,10 +6,58 @@ Imports KnowledgewareTypeLib
 Imports System.Runtime.InteropServices
 
 Public Class TailGenerator
+    Private Const TailOperationName As String = "Tail generation"
     Private Const TailMainSparChordFraction As Double = 0.25
     Private Const ForwardLighteningCutoutChordFraction As Double = 0.35
     Private Const MiddleLighteningCutoutChordFraction As Double = 0.48
     Private Const AftLighteningCutoutChordFraction As Double = 0.6
+
+    Private Shared Function PrepareProgressReporter(ByVal progressReporter As IGenerationProgressReporter) As IGenerationProgressReporter
+        Return GenerationProgress.UseDefaultReporterWhenMissing(progressReporter)
+    End Function
+
+    Private Shared Sub ReportTailStarting(ByVal progressReporter As IGenerationProgressReporter)
+        GenerationProgress.Report(progressReporter,
+                                  GenerationProgressUpdate.CreateStarting(TailOperationName,
+                                                                          "Starting tail generation."))
+    End Sub
+
+    Private Shared Sub ReportTailStep(ByVal progressReporter As IGenerationProgressReporter,
+                                      ByVal stageName As String,
+                                      ByVal message As String,
+                                      ByVal currentStep As Integer,
+                                      ByVal totalSteps As Integer)
+        GenerationProgress.Report(progressReporter,
+                                  GenerationProgressUpdate.CreateStep(TailOperationName,
+                                                                      stageName,
+                                                                      message,
+                                                                      currentStep,
+                                                                      totalSteps))
+    End Sub
+
+    Private Shared Sub ReportTailCompleted(ByVal progressReporter As IGenerationProgressReporter)
+        GenerationProgress.Report(progressReporter,
+                                  GenerationProgressUpdate.CreateCompleted(TailOperationName,
+                                                                           "Tail generation complete."))
+    End Sub
+
+    Private Shared Sub ReportTailFailed(ByVal progressReporter As IGenerationProgressReporter,
+                                        ByVal message As String)
+        GenerationProgress.Report(progressReporter,
+                                  GenerationProgressUpdate.CreateFailed(TailOperationName,
+                                                                        message))
+    End Sub
+
+    Private Shared Sub ReportTailFailed(ByVal progressReporter As IGenerationProgressReporter,
+                                        ByVal exception As Exception)
+        Dim message As String = "Tail generation failed."
+
+        If exception IsNot Nothing AndAlso Not String.IsNullOrWhiteSpace(exception.Message) Then
+            message &= " " & exception.Message
+        End If
+
+        ReportTailFailed(progressReporter, message)
+    End Sub
 
     ' =====================================================
     ' MAIN RUN FUNCTION (Now Shared)
@@ -18,7 +66,15 @@ Public Class TailGenerator
         Run(TailConfiguration.CreateDefault())
     End Sub
 
-    Friend Shared Sub Run(ByVal configuration As TailConfiguration)
+    Friend Shared Sub Run(ByVal configuration As TailConfiguration,
+                          Optional ByVal progressReporter As IGenerationProgressReporter = Nothing)
+        Dim activeProgressReporter As IGenerationProgressReporter = PrepareProgressReporter(progressReporter)
+        Const totalSteps As Integer = 10
+
+        ReportTailStarting(activeProgressReporter)
+
+        Try
+        ReportTailStep(activeProgressReporter, "Validation", "Validating tail configuration.", 1, totalSteps)
         Dim validationResult As ConfigurationValidationResult =
             TailConfigurationValidator.Validate(configuration)
         validationResult.ThrowIfInvalid()
@@ -57,16 +113,19 @@ Public Class TailGenerator
         ' =====================================================
         ' CONNECT TO CATIA
         ' =====================================================
+        ReportTailStep(activeProgressReporter, "CATIA setup", "Connecting to CATIA and reading the active part.", 2, totalSteps)
         Dim catiaApp As Application
         Try
             ' Explicitly defining System.Runtime.InteropServices to prevent Marshal errors
             catiaApp = CType(System.Runtime.InteropServices.Marshal.GetActiveObject("CATIA.Application"), Application)
         Catch ex As Exception
+            ReportTailFailed(activeProgressReporter, "Could not connect to CATIA. Ensure CATIA is running.")
             MessageBox.Show("Could not connect to CATIA. Ensure CATIA is running.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error)
             Exit Sub
         End Try
 
         If catiaApp.Documents.Count = 0 OrElse TypeName(catiaApp.ActiveDocument) <> "PartDocument" Then
+            ReportTailFailed(activeProgressReporter, "Please open a CATIA Part Document.")
             MessageBox.Show("Please open a CATIA Part Document.", "Warning", MessageBoxButtons.OK, MessageBoxIcon.Warning)
             Exit Sub
         End If
@@ -80,6 +139,7 @@ Public Class TailGenerator
         ' =====================================================
         ' GEOMETRY SETS
         ' =====================================================
+        ReportTailStep(activeProgressReporter, "CATIA setup", "Preparing tail geometry sets.", 3, totalSteps)
         Dim geoSets As HybridBodies = activePart.HybridBodies
         Dim planeSet As HybridBody
 
@@ -99,6 +159,7 @@ Public Class TailGenerator
         ' =====================================================
         ' HORIZONTAL TAIL
         ' =====================================================
+        ReportTailStep(activeProgressReporter, "Horizontal tail", "Creating horizontal tail ribs and aero profiles.", 4, totalSteps)
         Dim zxPlaneRef As Reference = activePart.CreateReferenceFromObject(originElements.PlaneZX)
         Dim horizSpacing As Double = (horizHalfSpan * 2) / (horizRibCount - 1)
 
@@ -140,6 +201,7 @@ Public Class TailGenerator
         Next
 
         ' A. MAIN CYLINDRICAL SPAR (Horizontal)
+        ReportTailStep(activeProgressReporter, "Horizontal tail", "Creating horizontal tail main and rear spars.", 5, totalSteps)
         Dim hMainX As Double = horizOffset + (horizChord * TailMainSparChordFraction)
         Dim hMainCamberY As Double = GetAirfoilMeanCamberY(horizChord, horizontalAirfoil, TailMainSparChordFraction)
         Dim hMainSparSk = DrawCylinderSketch(activePart, zxPlaneRef, hMainX, 0.0, hMainCamberY, mainSparRadius, "Horiz_Main_Spar_Cyl", "Horizontal")
@@ -161,6 +223,7 @@ Public Class TailGenerator
         ' =====================================================
         ' VERTICAL TAIL
         ' =====================================================
+        ReportTailStep(activeProgressReporter, "Vertical tail", "Creating vertical tail ribs and aero profiles.", 6, totalSteps)
         Dim xyPlaneRef As Reference = activePart.CreateReferenceFromObject(originElements.PlaneXY)
         Dim vertSpacing As Double = vertSpan / (vertRibCount - 1)
 
@@ -202,6 +265,7 @@ Public Class TailGenerator
         Dim vertTipPlaneRef As Reference = activePart.CreateReferenceFromObject(vertTipPlane)
 
         ' A. MAIN CYLINDRICAL SPAR (Vertical - Tapered Loft)
+        ReportTailStep(activeProgressReporter, "Vertical tail", "Creating vertical tail main and rear spars.", 7, totalSteps)
         Dim vMainRootX As Double = vertRootOffset + (vertRootChord * TailMainSparChordFraction)
         Dim vMainTipX As Double = vertTipOffset + (vertTipChord * TailMainSparChordFraction)
         Dim vMainRootCamberY As Double = GetAirfoilMeanCamberY(vertRootChord, verticalAirfoil, TailMainSparChordFraction)
@@ -220,6 +284,7 @@ Public Class TailGenerator
         ' =====================================================
         ' C. VERTICAL RUDDER (MODIFIED FOR PITCH CLEARANCE)
         ' =====================================================
+        ReportTailStep(activeProgressReporter, "Control surfaces", "Creating rudder clearance, rudder, and elevator geometry.", 8, totalSteps)
         Dim tRudder As Double = rudderClearanceZ / vertSpan
         Dim vRudLocalRootChord As Double = vertRootChord + tRudder * (vertTipChord - vertRootChord)
         Dim vRudLocalRootOffset As Double = vertRootOffset + tRudder * (vertTipOffset - vertRootOffset)
@@ -255,11 +320,18 @@ Public Class TailGenerator
         ' =====================================================
         ' WRAP SKINS
         ' =====================================================
+        ReportTailStep(activeProgressReporter, "Skins", "Wrapping horizontal and vertical tail skins.", 9, totalSteps)
         WrapSkin(hybridShapeFactory, skinSet, activePart, horizMainSketches, "Horizontal_Main_Skin")
         WrapSkin(hybridShapeFactory, skinSet, activePart, vertMainSketches, "Vertical_Main_Skin")
 
+        ReportTailStep(activeProgressReporter, "Final update", "Updating CATIA part.", 10, totalSteps)
         activePart.Update()
+        ReportTailCompleted(activeProgressReporter)
         MessageBox.Show("Generation Complete! Rudder clearance added successfully.", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information)
+        Catch ex As Exception
+            ReportTailFailed(activeProgressReporter, ex)
+            Throw
+        End Try
     End Sub
 
     ' =====================================================

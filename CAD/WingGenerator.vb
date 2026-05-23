@@ -2,6 +2,8 @@ Imports System.Collections.Generic
 Imports System.Runtime.InteropServices
 
 Friend Module WingGenerator
+    Private Const WingOperationName As String = "Wing generation"
+
     Private Enum RibProfileRegion
         Full
         ForwardWingPanel
@@ -49,16 +51,77 @@ Friend Module WingGenerator
         Return GetWingAirfoilLabel() & " outer wing skin"
     End Function
 
+    Private Function PrepareProgressReporter(ByVal progressReporter As IGenerationProgressReporter) As IGenerationProgressReporter
+        Return GenerationProgress.UseDefaultReporterWhenMissing(progressReporter)
+    End Function
+
+    Private Sub ReportWingStarting(ByVal progressReporter As IGenerationProgressReporter,
+                                   ByVal stageName As String)
+        GenerationProgress.Report(progressReporter,
+                                  GenerationProgressUpdate.CreateStarting(WingOperationName,
+                                                                          "Starting " & stageName & "."))
+    End Sub
+
+    Private Sub ReportWingStep(ByVal progressReporter As IGenerationProgressReporter,
+                               ByVal stageName As String,
+                               ByVal message As String,
+                               ByVal currentStep As Integer,
+                               ByVal totalSteps As Integer)
+        GenerationProgress.Report(progressReporter,
+                                  GenerationProgressUpdate.CreateStep(WingOperationName,
+                                                                      stageName,
+                                                                      message,
+                                                                      currentStep,
+                                                                      totalSteps))
+    End Sub
+
+    Private Sub ReportWingCompleted(ByVal progressReporter As IGenerationProgressReporter,
+                                    ByVal stageName As String)
+        GenerationProgress.Report(progressReporter,
+                                  GenerationProgressUpdate.CreateCompleted(WingOperationName,
+                                                                           stageName & " complete."))
+    End Sub
+
+    Private Sub ReportWingFailed(ByVal progressReporter As IGenerationProgressReporter,
+                                 ByVal stageName As String,
+                                 ByVal exception As Exception)
+        Dim message As String = stageName & " failed."
+
+        If exception IsNot Nothing AndAlso Not String.IsNullOrWhiteSpace(exception.Message) Then
+            message &= " " & exception.Message
+        End If
+
+        GenerationProgress.Report(progressReporter,
+                                  GenerationProgressUpdate.CreateFailed(WingOperationName,
+                                                                        message))
+    End Sub
+
     Friend Function CreateStage4APhysicalRibs() As Object
         Return CreateStage4APhysicalRibs(WingConfiguration.CreateDefault())
     End Function
 
-    Friend Function CreateStage4APhysicalRibs(ByVal configuration As WingConfiguration) As Object
-        ApplyWingConfiguration(configuration)
-        Return CreateStage4APhysicalRibsCore()
+    Friend Function CreateStage4APhysicalRibs(ByVal configuration As WingConfiguration,
+                                              Optional ByVal progressReporter As IGenerationProgressReporter = Nothing) As Object
+        Dim activeProgressReporter As IGenerationProgressReporter = PrepareProgressReporter(progressReporter)
+        Dim stageName As String = "Wing physical ribs"
+
+        ReportWingStarting(activeProgressReporter, stageName)
+
+        Try
+            ApplyWingConfiguration(configuration)
+            Dim partDocument As Object = CreateStage4APhysicalRibsCore(activeProgressReporter)
+            ReportWingCompleted(activeProgressReporter, stageName)
+            Return partDocument
+        Catch ex As Exception
+            ReportWingFailed(activeProgressReporter, stageName, ex)
+            Throw
+        End Try
     End Function
 
-    Private Function CreateStage4APhysicalRibsCore() As Object
+    Private Function CreateStage4APhysicalRibsCore(ByVal progressReporter As IGenerationProgressReporter) As Object
+        Const totalSteps As Integer = 7
+        ReportWingStep(progressReporter, "CATIA setup", "Connecting to CATIA and creating the wing part.", 1, totalSteps)
+
         Dim catiaApplication As Object = GetOrCreateCatiaApplication()
         catiaApplication.Visible = True
 
@@ -69,6 +132,7 @@ Friend Module WingGenerator
         TrySetName(part, "Stage_4A_Tapered_Wing_Physical_Ribs")
 
         Dim hybridBodies As Object = part.HybridBodies
+        ReportWingStep(progressReporter, "Geometry sets", "Creating CATIA geometry sets.", 2, totalSteps)
 
         Dim planformSet As Object = hybridBodies.Add()
         TrySetName(planformSet, "Stage 4A - Planform and Rib Stations")
@@ -86,23 +150,28 @@ Friend Module WingGenerator
         Dim shapeFactory As Object = part.ShapeFactory
         Dim stations As List(Of WingStation) = BuildStations()
 
+        ReportWingStep(progressReporter, "Planform", "Building planform and rib station references.", 3, totalSteps)
         AddPlanformGeometry(part, hybridShapeFactory, planformSet)
 
         Dim stationProfiles As New List(Of WingStationProfile)()
 
+        ReportWingStep(progressReporter, "Airfoil profiles", "Building airfoil station profiles.", 4, totalSteps)
         For Each station As WingStation In stations
             stationProfiles.Add(AddAirfoilStationProfile(part, hybridShapeFactory, airfoilSet, station))
         Next
 
+        ReportWingStep(progressReporter, "Outer wing skin", "Creating outer wing skin.", 5, totalSteps)
         Dim outerSkin As Object = CreateOuterWingSkinFromProfiles(part,
                                                                   hybridShapeFactory,
                                                                   skinSet,
                                                                   stationProfiles)
 
+        ReportWingStep(progressReporter, "Ribs", "Creating physical rib bodies.", 6, totalSteps)
         For Each station As WingStation In stations
             AddPhysicalRibBody(part, hybridShapeFactory, shapeFactory, ribPlaneSet, station)
         Next
 
+        ReportWingStep(progressReporter, "Final update", "Updating CATIA part.", 7, totalSteps)
         TrySetInWorkObject(part, outerSkin)
         RequireUpdatePart(part, "Stage 4A wing with physical ribs")
         TryReframe(catiaApplication)
@@ -114,12 +183,28 @@ Friend Module WingGenerator
         Return CreateStage4BPhysicalRibsAndMainSpar(WingConfiguration.CreateDefault())
     End Function
 
-    Friend Function CreateStage4BPhysicalRibsAndMainSpar(ByVal configuration As WingConfiguration) As Object
-        ApplyWingConfiguration(configuration)
-        Return CreateStage4BPhysicalRibsAndMainSparCore()
+    Friend Function CreateStage4BPhysicalRibsAndMainSpar(ByVal configuration As WingConfiguration,
+                                                         Optional ByVal progressReporter As IGenerationProgressReporter = Nothing) As Object
+        Dim activeProgressReporter As IGenerationProgressReporter = PrepareProgressReporter(progressReporter)
+        Dim stageName As String = "Wing ribs and main spar"
+
+        ReportWingStarting(activeProgressReporter, stageName)
+
+        Try
+            ApplyWingConfiguration(configuration)
+            Dim partDocument As Object = CreateStage4BPhysicalRibsAndMainSparCore(activeProgressReporter)
+            ReportWingCompleted(activeProgressReporter, stageName)
+            Return partDocument
+        Catch ex As Exception
+            ReportWingFailed(activeProgressReporter, stageName, ex)
+            Throw
+        End Try
     End Function
 
-    Private Function CreateStage4BPhysicalRibsAndMainSparCore() As Object
+    Private Function CreateStage4BPhysicalRibsAndMainSparCore(ByVal progressReporter As IGenerationProgressReporter) As Object
+        Const totalSteps As Integer = 8
+        ReportWingStep(progressReporter, "CATIA setup", "Connecting to CATIA and creating the wing part.", 1, totalSteps)
+
         Dim catiaApplication As Object = GetOrCreateCatiaApplication()
         catiaApplication.Visible = True
 
@@ -130,6 +215,7 @@ Friend Module WingGenerator
         TrySetName(part, "Stage_4B_Tapered_Wing_Ribs_And_Main_Spar")
 
         Dim hybridBodies As Object = part.HybridBodies
+        ReportWingStep(progressReporter, "Geometry sets", "Creating CATIA geometry sets.", 2, totalSteps)
 
         Dim planformSet As Object = hybridBodies.Add()
         TrySetName(planformSet, "Stage 4B - Planform and Rib Stations")
@@ -150,19 +236,23 @@ Friend Module WingGenerator
         Dim shapeFactory As Object = part.ShapeFactory
         Dim stations As List(Of WingStation) = BuildStations()
 
+        ReportWingStep(progressReporter, "Planform", "Building planform and rib station references.", 3, totalSteps)
         AddPlanformGeometry(part, hybridShapeFactory, planformSet)
 
         Dim stationProfiles As New List(Of WingStationProfile)()
 
+        ReportWingStep(progressReporter, "Airfoil profiles", "Building airfoil station profiles.", 4, totalSteps)
         For Each station As WingStation In stations
             stationProfiles.Add(AddAirfoilStationProfile(part, hybridShapeFactory, airfoilSet, station))
         Next
 
+        ReportWingStep(progressReporter, "Outer wing skin", "Creating outer wing skin.", 5, totalSteps)
         Dim outerSkin As Object = CreateOuterWingSkinFromProfiles(part,
                                                                   hybridShapeFactory,
                                                                   skinSet,
                                                                   stationProfiles)
 
+        ReportWingStep(progressReporter, "Ribs", "Creating physical ribs with cutouts.", 6, totalSteps)
         For Each station As WingStation In stations
             AddPhysicalRibBody(part,
                                hybridShapeFactory,
@@ -172,11 +262,13 @@ Friend Module WingGenerator
                                True)
         Next
 
+        ReportWingStep(progressReporter, "Main spar", "Creating hollow main spar.", 7, totalSteps)
         Dim mainSpar As Object = AddMainSparBody(part,
                                                  hybridShapeFactory,
                                                  shapeFactory,
                                                  sparReferenceSet)
 
+        ReportWingStep(progressReporter, "Final update", "Updating CATIA part.", 8, totalSteps)
         TrySetInWorkObject(part, mainSpar)
         RequireUpdatePart(part, "Stage 4B wing with physical ribs and main spar")
         TryReframe(catiaApplication)
@@ -188,12 +280,28 @@ Friend Module WingGenerator
         Return CreateStage4CPhysicalRibsMainSparAndAilerons(WingConfiguration.CreateDefault())
     End Function
 
-    Friend Function CreateStage4CPhysicalRibsMainSparAndAilerons(ByVal configuration As WingConfiguration) As Object
-        ApplyWingConfiguration(configuration)
-        Return CreateStage4CPhysicalRibsMainSparAndAileronsCore()
+    Friend Function CreateStage4CPhysicalRibsMainSparAndAilerons(ByVal configuration As WingConfiguration,
+                                                                 Optional ByVal progressReporter As IGenerationProgressReporter = Nothing) As Object
+        Dim activeProgressReporter As IGenerationProgressReporter = PrepareProgressReporter(progressReporter)
+        Dim stageName As String = "Wing ribs, main spar, and ailerons"
+
+        ReportWingStarting(activeProgressReporter, stageName)
+
+        Try
+            ApplyWingConfiguration(configuration)
+            Dim partDocument As Object = CreateStage4CPhysicalRibsMainSparAndAileronsCore(activeProgressReporter)
+            ReportWingCompleted(activeProgressReporter, stageName)
+            Return partDocument
+        Catch ex As Exception
+            ReportWingFailed(activeProgressReporter, stageName, ex)
+            Throw
+        End Try
     End Function
 
-    Private Function CreateStage4CPhysicalRibsMainSparAndAileronsCore() As Object
+    Private Function CreateStage4CPhysicalRibsMainSparAndAileronsCore(ByVal progressReporter As IGenerationProgressReporter) As Object
+        Const totalSteps As Integer = 10
+        ReportWingStep(progressReporter, "CATIA setup", "Connecting to CATIA and creating the wing part.", 1, totalSteps)
+
         Dim catiaApplication As Object = GetOrCreateCatiaApplication()
         catiaApplication.Visible = True
 
@@ -204,6 +312,7 @@ Friend Module WingGenerator
         TrySetName(part, "Stage_4C_Tapered_Wing_Ribs_Spar_And_Ailerons")
 
         Dim hybridBodies As Object = part.HybridBodies
+        ReportWingStep(progressReporter, "Geometry sets", "Creating CATIA geometry sets.", 2, totalSteps)
 
         Dim planformSet As Object = hybridBodies.Add()
         TrySetName(planformSet, "Stage 4C - Planform and Rib Stations")
@@ -233,14 +342,17 @@ Friend Module WingGenerator
         Dim shapeFactory As Object = part.ShapeFactory
         Dim stations As List(Of WingStation) = BuildStations()
 
+        ReportWingStep(progressReporter, "Planform", "Building planform and rib station references.", 3, totalSteps)
         AddPlanformGeometry(part, hybridShapeFactory, planformSet)
 
         Dim stationProfiles As New List(Of WingStationProfile)()
 
+        ReportWingStep(progressReporter, "Airfoil profiles", "Building airfoil station profiles.", 4, totalSteps)
         For Each station As WingStation In stations
             stationProfiles.Add(AddAirfoilStationProfile(part, hybridShapeFactory, airfoilSet, station))
         Next
 
+        ReportWingStep(progressReporter, "Wing skins", "Creating split fixed-wing and aileron skin surfaces.", 5, totalSteps)
         CreateStage4CSplitSkinSurfaces(partDocument,
                                         part,
                                         hybridShapeFactory,
@@ -249,12 +361,15 @@ Friend Module WingGenerator
                                         aileronSkinSet,
                                         stations,
                                         stationProfiles)
+        ReportWingStep(progressReporter, "Aileron spars", "Creating aileron rear hinge spars.", 6, totalSteps)
         AddAileronRearHingeSpars(part,
                                   hybridShapeFactory,
                                   shapeFactory,
                                   aileronRearSparSet)
+        ReportWingStep(progressReporter, "Aileron references", "Creating aileron cut reference geometry.", 7, totalSteps)
         AddAileronCutReferenceGeometry(part, hybridShapeFactory, aileronReferenceSet)
 
+        ReportWingStep(progressReporter, "Ribs", "Creating physical ribs with spar and lightening cutouts.", 8, totalSteps)
         For Each station As WingStation In stations
             AddPhysicalRibBody(part,
                                hybridShapeFactory,
@@ -265,11 +380,13 @@ Friend Module WingGenerator
                                WingDefinition.IsWithinAileronSpan(station.SpanPosition))
         Next
 
+        ReportWingStep(progressReporter, "Main spar", "Creating hollow main spar.", 9, totalSteps)
         Dim mainSpar As Object = AddMainSparBody(part,
                                                  hybridShapeFactory,
                                                  shapeFactory,
                                                  sparReferenceSet)
 
+        ReportWingStep(progressReporter, "Final update", "Updating CATIA part.", 10, totalSteps)
         TrySetInWorkObject(part, mainSpar)
         RequireUpdatePart(part, "Stage 4C wing with physical ribs, main spar, and aileron cuts")
         TryReframe(catiaApplication)
@@ -281,12 +398,28 @@ Friend Module WingGenerator
         Return CreateStage3OuterWingSkin(WingConfiguration.CreateDefault())
     End Function
 
-    Friend Function CreateStage3OuterWingSkin(ByVal configuration As WingConfiguration) As Object
-        ApplyWingConfiguration(configuration)
-        Return CreateStage3OuterWingSkinCore()
+    Friend Function CreateStage3OuterWingSkin(ByVal configuration As WingConfiguration,
+                                              Optional ByVal progressReporter As IGenerationProgressReporter = Nothing) As Object
+        Dim activeProgressReporter As IGenerationProgressReporter = PrepareProgressReporter(progressReporter)
+        Dim stageName As String = "Outer wing skin"
+
+        ReportWingStarting(activeProgressReporter, stageName)
+
+        Try
+            ApplyWingConfiguration(configuration)
+            Dim partDocument As Object = CreateStage3OuterWingSkinCore(activeProgressReporter)
+            ReportWingCompleted(activeProgressReporter, stageName)
+            Return partDocument
+        Catch ex As Exception
+            ReportWingFailed(activeProgressReporter, stageName, ex)
+            Throw
+        End Try
     End Function
 
-    Private Function CreateStage3OuterWingSkinCore() As Object
+    Private Function CreateStage3OuterWingSkinCore(ByVal progressReporter As IGenerationProgressReporter) As Object
+        Const totalSteps As Integer = 6
+        ReportWingStep(progressReporter, "CATIA setup", "Connecting to CATIA and creating the wing part.", 1, totalSteps)
+
         Dim catiaApplication As Object = GetOrCreateCatiaApplication()
         catiaApplication.Visible = True
 
@@ -297,6 +430,7 @@ Friend Module WingGenerator
         TrySetName(part, "Stage_3_Tapered_Wing_Outer_Skin")
 
         Dim hybridBodies As Object = part.HybridBodies
+        ReportWingStep(progressReporter, "Geometry sets", "Creating CATIA geometry sets.", 2, totalSteps)
 
         Dim planformSet As Object = hybridBodies.Add()
         TrySetName(planformSet, "Stage 3 - Planform and Rib Stations")
@@ -309,18 +443,22 @@ Friend Module WingGenerator
 
         Dim hybridShapeFactory As Object = part.HybridShapeFactory
 
+        ReportWingStep(progressReporter, "Planform", "Building planform and rib station references.", 3, totalSteps)
         AddPlanformGeometry(part, hybridShapeFactory, planformSet)
 
         Dim stationProfiles As New List(Of WingStationProfile)()
 
+        ReportWingStep(progressReporter, "Airfoil profiles", "Building airfoil station profiles.", 4, totalSteps)
         For Each station As WingStation In BuildStations()
             stationProfiles.Add(AddAirfoilStationProfile(part, hybridShapeFactory, airfoilSet, station))
         Next
 
+        ReportWingStep(progressReporter, "Outer wing skin", "Creating outer wing skin.", 5, totalSteps)
         Dim outerSkin As Object = CreateOuterWingSkinFromProfiles(part,
                                                                   hybridShapeFactory,
                                                                   skinSet,
                                                                   stationProfiles)
+        ReportWingStep(progressReporter, "Final update", "Updating CATIA part.", 6, totalSteps)
         TrySetInWorkObject(part, outerSkin)
         RequireUpdatePart(part, "Stage 3 outer wing skin")
         TryReframe(catiaApplication)
@@ -332,12 +470,28 @@ Friend Module WingGenerator
         Return CreateStage2AirfoilStations(WingConfiguration.CreateDefault())
     End Function
 
-    Friend Function CreateStage2AirfoilStations(ByVal configuration As WingConfiguration) As Object
-        ApplyWingConfiguration(configuration)
-        Return CreateStage2AirfoilStationsCore()
+    Friend Function CreateStage2AirfoilStations(ByVal configuration As WingConfiguration,
+                                                Optional ByVal progressReporter As IGenerationProgressReporter = Nothing) As Object
+        Dim activeProgressReporter As IGenerationProgressReporter = PrepareProgressReporter(progressReporter)
+        Dim stageName As String = "Airfoil stations"
+
+        ReportWingStarting(activeProgressReporter, stageName)
+
+        Try
+            ApplyWingConfiguration(configuration)
+            Dim partDocument As Object = CreateStage2AirfoilStationsCore(activeProgressReporter)
+            ReportWingCompleted(activeProgressReporter, stageName)
+            Return partDocument
+        Catch ex As Exception
+            ReportWingFailed(activeProgressReporter, stageName, ex)
+            Throw
+        End Try
     End Function
 
-    Private Function CreateStage2AirfoilStationsCore() As Object
+    Private Function CreateStage2AirfoilStationsCore(ByVal progressReporter As IGenerationProgressReporter) As Object
+        Const totalSteps As Integer = 5
+        ReportWingStep(progressReporter, "CATIA setup", "Connecting to CATIA and creating the wing part.", 1, totalSteps)
+
         Dim catiaApplication As Object = GetOrCreateCatiaApplication()
         catiaApplication.Visible = True
 
@@ -348,6 +502,7 @@ Friend Module WingGenerator
         TrySetName(part, "Stage_2_Tapered_Wing_" & GetWingAirfoilIdentifier() & "_Stations")
 
         Dim hybridBodies As Object = part.HybridBodies
+        ReportWingStep(progressReporter, "Geometry sets", "Creating CATIA geometry sets.", 2, totalSteps)
 
         Dim planformSet As Object = hybridBodies.Add()
         TrySetName(planformSet, "Stage 2 - Planform and Rib Stations")
@@ -357,12 +512,15 @@ Friend Module WingGenerator
 
         Dim hybridShapeFactory As Object = part.HybridShapeFactory
 
+        ReportWingStep(progressReporter, "Planform", "Building planform and rib station references.", 3, totalSteps)
         AddPlanformGeometry(part, hybridShapeFactory, planformSet)
 
+        ReportWingStep(progressReporter, "Airfoil profiles", "Building airfoil station profiles.", 4, totalSteps)
         For Each station As WingStation In BuildStations()
             AddAirfoilStationProfile(part, hybridShapeFactory, airfoilSet, station)
         Next
 
+        ReportWingStep(progressReporter, "Final update", "Updating CATIA part.", 5, totalSteps)
         RequireUpdatePart(part, "Stage 2 airfoil stations")
         TryReframe(catiaApplication)
 
@@ -373,12 +531,28 @@ Friend Module WingGenerator
         Return CreateStage1Planform(WingConfiguration.CreateDefault())
     End Function
 
-    Friend Function CreateStage1Planform(ByVal configuration As WingConfiguration) As Object
-        ApplyWingConfiguration(configuration)
-        Return CreateStage1PlanformCore()
+    Friend Function CreateStage1Planform(ByVal configuration As WingConfiguration,
+                                         Optional ByVal progressReporter As IGenerationProgressReporter = Nothing) As Object
+        Dim activeProgressReporter As IGenerationProgressReporter = PrepareProgressReporter(progressReporter)
+        Dim stageName As String = "Planform"
+
+        ReportWingStarting(activeProgressReporter, stageName)
+
+        Try
+            ApplyWingConfiguration(configuration)
+            Dim partDocument As Object = CreateStage1PlanformCore(activeProgressReporter)
+            ReportWingCompleted(activeProgressReporter, stageName)
+            Return partDocument
+        Catch ex As Exception
+            ReportWingFailed(activeProgressReporter, stageName, ex)
+            Throw
+        End Try
     End Function
 
-    Private Function CreateStage1PlanformCore() As Object
+    Private Function CreateStage1PlanformCore(ByVal progressReporter As IGenerationProgressReporter) As Object
+        Const totalSteps As Integer = 4
+        ReportWingStep(progressReporter, "CATIA setup", "Connecting to CATIA and creating the wing part.", 1, totalSteps)
+
         Dim catiaApplication As Object = GetOrCreateCatiaApplication()
         catiaApplication.Visible = True
 
@@ -389,13 +563,16 @@ Friend Module WingGenerator
         TrySetName(part, "Stage_1_Tapered_Wing_Planform")
 
         Dim hybridBodies As Object = part.HybridBodies
+        ReportWingStep(progressReporter, "Geometry sets", "Creating CATIA geometry sets.", 2, totalSteps)
         Dim stageSet As Object = hybridBodies.Add()
         TrySetName(stageSet, "Stage 1 - Planform and Rib Stations")
 
         Dim hybridShapeFactory As Object = part.HybridShapeFactory
 
+        ReportWingStep(progressReporter, "Planform", "Building planform and rib station references.", 3, totalSteps)
         AddPlanformGeometry(part, hybridShapeFactory, stageSet)
 
+        ReportWingStep(progressReporter, "Final update", "Updating CATIA part.", 4, totalSteps)
         RequireUpdatePart(part, "Stage 1 planform")
         TryReframe(catiaApplication)
 
