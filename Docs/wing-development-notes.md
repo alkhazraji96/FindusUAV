@@ -1,6 +1,6 @@
 # Wing Development Notes
 
-Date: 2026-05-13
+Date: 2026-05-23
 
 This note records the CATIA V5 / VB.NET wing-generation design and implementation state. It is intended as a handoff document for future AI agents or team members.
 
@@ -9,9 +9,12 @@ This note records the CATIA V5 / VB.NET wing-generation design and implementatio
 The CAD generation code is split across focused files in the `CAD` folder:
 
 ```text
+CAD/AircraftConfiguration.vb    Wing and tail configuration defaults
 CAD/GenerateAirfoil.vb          Public facade used by the UI button
 CAD/WingGenerator.vb            Stage 1 through Stage 4C wing generation
-CAD/WingDefinition.vb           Wing, rib, spar, cutout, aileron, and NACA 4415 constants
+CAD/WingDefinition.vb           Wing definition values derived from active configuration
+CAD/WingConfigurationValidator.vb Wing configuration validation rules
+CAD/TailConfigurationValidator.vb Tail configuration validation rules
 CAD/WingStation.vb              Wing station/profile data structures
 CAD/NacaAirfoil.vb              General NACA 4-digit coordinate generation
 CAD/AirfoilCoordinate.vb        Airfoil coordinate data structure
@@ -19,10 +22,12 @@ CAD/CatiaInterop.vb             CATIA COM helper functions
 CAD/Naca2412SliceGenerator.vb   Previous standalone 3 mm NACA 2412 test slice
 ```
 
-The UI is not meant to contain CAD logic. The button handler should only call:
+The UI is not meant to contain CAD logic. The generation button handlers should only build/validate configuration and call the CAD facades:
 
 ```vb
 GenerateAirfoil.Run()
+GenerateAirfoil.Run(currentConfiguration.Wing)
+TailGenerator.Run(currentConfiguration.Tail)
 ```
 
 At the time of this note, `Run()` calls the Stage 4C physical rib, main spar, cutout, and aileron generator.
@@ -62,9 +67,9 @@ Full span: 3.54365 m = 3543.65 mm
 Half span: 1771.825 mm
 Root chord: 0.586 m = 586 mm
 Tip chord: 0.374 m = 374 mm
-Airfoil: NACA 4415 at every station
+Airfoil: selected NACA 4-digit airfoil, default NACA 4415 at every station
 Rib thickness: 3 mm
-Ribs: 29 total
+Ribs: 29 total by default
 ```
 
 Main spar:
@@ -111,10 +116,10 @@ Ailerons:
 
 ```text
 Count: 2 total, one per semi-span
-Span per aileron: 708.73 mm
-Semi-span fraction: 40%
+Span per aileron: 708.73 mm by default
+Semi-span fraction: 40% by default, configurable in Plan A1
 Tip margin: none
-Inner aileron boundary: +/-1063.095 mm, between Rib_08 and Rib_09
+Inner aileron boundary: +/-1063.095 mm by default, between Rib_08 and Rib_09
 Outer aileron boundary: +/-1771.825 mm at Rib_14 / wing tip
 Fixed wing panel aft edge: X = 261.8 mm
 Rear hinge spar: X = 261.8 mm to X = 273.02 mm
@@ -122,7 +127,7 @@ Aileron body: X = 280.5 mm to local trailing edge
 Clearance between rear spar and aileron: 7.48 mm
 ```
 
-The aileron chord stations are constant global X values, so the fixed cut, rear hinge spar, and aileron leading edge remain parallel to the straight wing leading edge. The aileron span is exactly 40% of the semi-span and uses a synthetic inner span station when the inner boundary falls between ribs.
+The aileron chord stations are constant global X values, so the fixed cut, rear hinge spar, and aileron leading edge remain parallel to the straight wing leading edge. The aileron span is a configurable fraction of the semi-span and uses a synthetic inner span station when the inner boundary falls between ribs.
 
 ## Coordinate System
 
@@ -149,9 +154,9 @@ Tip chord = 374 mm
 
 So the trailing edge moves forward toward each tip.
 
-The wing uses NACA 4415 at every station. Only the chord length changes along the span.
+The wing uses one selected NACA 4-digit airfoil at every station. Only the chord length changes along the span.
 
-NACA 4415 parameters used in code:
+Default NACA 4415 parameters:
 
 ```text
 Maximum camber: 0.04
@@ -173,13 +178,13 @@ The rib station lines are currently useful visual scaffolding. They help confirm
 
 ## Stage 2: Airfoil Station Profiles
 
-Stage 2 adds NACA 4415 airfoil profiles at the same 29 rib stations.
+Stage 2 adds selected NACA 4-digit airfoil profiles at the same rib stations.
 
 Current behavior:
 
 - Creates a new CATIA Part.
 - Creates a geometrical set for planform and rib station lines.
-- Creates a separate geometrical set for NACA 4415 station profiles.
+- Creates a separate geometrical set for selected-airfoil station profiles.
 - Builds 29 airfoil station splines:
   - 14 left side profiles.
   - 1 center profile.
@@ -192,7 +197,7 @@ Current behavior:
 
 Stage 3 creates the outer wing skin:
 
-- Use the 29 NACA 4415 station profiles.
+- Use the selected-airfoil station profiles.
 - Create a CATIA Multi-Section Surface through those profiles.
 - Keep the skin as a surface with no thickness for now.
 
@@ -200,7 +205,7 @@ Current behavior:
 
 - Creates a new CATIA Part.
 - Creates a geometrical set for planform and rib station lines.
-- Creates a geometrical set for NACA 4415 station profiles.
+- Creates a geometrical set for selected-airfoil station profiles.
 - Creates a geometrical set for the outer wing skin.
 - Builds one lofted outer skin surface through the 29 profiles.
 - Uses a consistent profile closing point to help CATIA align the loft sections.
@@ -225,7 +230,7 @@ Current behavior:
 
 - Creates a new CATIA Part.
 - Creates the planform and rib station reference geometry.
-- Creates the 29 NACA 4415 station profiles.
+- Creates the selected-airfoil station profiles.
 - Creates one lofted outer wing skin surface through those profiles.
 - Creates one mid-plane per rib station.
 - Creates one smooth closed rib sketch per station, with a polyline fallback if CATIA cannot create the 2D sketch spline.
@@ -246,7 +251,7 @@ Stage 4B is the previous active generator.
 It creates:
 
 - The Stage 1 planform and rib station reference geometry.
-- The Stage 2 NACA 4415 station profiles.
+- The Stage 2 selected-airfoil station profiles.
 - The Stage 3 outer wing skin surface.
 - The Stage 4A physical rib bodies.
 - One 30% chord hollow circular main spar.
@@ -256,7 +261,7 @@ It creates:
 Main spar behavior:
 
 - The spar follows 30% of local chord, so its X location changes with taper.
-- The spar center follows the NACA 4415 mean camber line.
+- The spar center follows the selected airfoil mean camber line.
 - The generated spar is modeled as a hollow circular tube with 30 mm outer diameter and 1.5 mm wall thickness.
 - The spar is generated as left and right spanwise rib features that meet at the center rib.
 
@@ -265,7 +270,7 @@ Rib cutout behavior:
 - Each rib sketch includes the spar clearance hole before the rib is padded.
 - Each rib sketch includes three lightening cutout circles before the rib is padded.
 - The cutouts are parameterized by chord fraction and diameter rules, not fixed coordinates.
-- The cutout centers follow the NACA 4415 mean camber line at their chord fractions.
+- The cutout centers follow the selected airfoil mean camber line at their chord fractions.
 - Cutout diameters automatically shrink if needed to keep the minimum edge margin.
 
 This parameter structure is intended to stay compatible with a later Power Copy workflow. A future rib Power Copy can expose chord length, rib plane, spar position, spar diameter, and lightening cutout definitions as inputs.
@@ -282,10 +287,10 @@ Stage 4C is the current active generator.
 
 It creates everything from Stage 4B, then adds left and right aileron geometry modeled after the tail control-surface approach:
 
-- The aileron span runs from the wing tip inward for 40% of each semi-span.
+- The aileron span runs from the wing tip inward for the configured fraction of each semi-span.
 - The aileron reaches the outermost rib at the wing tip.
-- The aileron span is 708.73 mm.
-- The aileron inner boundary is at +/-1063.095 mm, between Rib_08 and Rib_09.
+- The default aileron span is 708.73 mm.
+- The default aileron inner boundary is at +/-1063.095 mm, between Rib_08 and Rib_09.
 - The fixed wing panel ends at constant X = 261.8 mm inside the aileron span.
 - A closed rear hinge spar solid occupies constant X = 261.8 mm to X = 273.02 mm.
 - The physical aileron body starts at constant X = 280.5 mm and continues to the local trailing edge.
@@ -309,7 +314,7 @@ Skin behavior:
 - The aileron support surfaces are closed into physical aileron solids.
 - The rear hinge spar is generated from closed airfoil slices between X = 261.8 mm and X = 273.02 mm.
 - The split profiles use constant-X stations, so CATIA is guided to keep the aileron collection parallel to the leading edge.
-- The aileron, outboard fixed skin, and rear hinge spar lofts include synthetic inner-boundary profiles because the 40% span boundary is not required to land on a rib.
+- The aileron, outboard fixed skin, and rear hinge spar lofts include synthetic inner-boundary profiles because the configured span boundary is not required to land on a rib.
 - Stage 4C adds upper and lower reference curves for the fixed wing rear spar face, rear hinge spar aft face, aileron leading edge, and aileron inner/outer end cuts.
 - The aileron skin/support surfaces do not sit on top of another full wing skin surface, so CATIA should not fade or flicker their color against an overlapping skin.
 - The fixed wing skin is not thickened yet, so there is no removed thick-skin material.
@@ -330,7 +335,7 @@ When running the current Stage 4C code in CATIA, verify:
 - Leading edge is straight at X = 0.
 - Taper is only from the trailing edge moving forward.
 - There are 29 rib stations.
-- Every station profile is NACA 4415.
+- Every station profile uses the selected wing NACA 4-digit airfoil.
 - Profiles are oriented with span along Y and thickness along Z.
 - Stage 4C creates separate fixed wing and aileron surfaces instead of one full wing skin surface over the aileron span.
 - The fixed wing skin has no solid thickness yet.
@@ -346,8 +351,8 @@ When running the current Stage 4C code in CATIA, verify:
 - There are left and right aileron rear hinge spar solids.
 - There are left and right physical aileron solids.
 - There are left and right aileron reference curves.
-- Each aileron has 708.73 mm span.
-- Each aileron starts at the wing tip and extends inward to +/-1063.095 mm, between Rib_08 and Rib_09.
+- Each aileron has the configured span, default 708.73 mm.
+- Each aileron starts at the wing tip and extends inward to the configured inner boundary, default +/-1063.095 mm between Rib_08 and Rib_09.
 - The fixed wing panel ends at constant X = 261.8 mm inside the aileron span.
 - The rear hinge spar occupies constant X = 261.8 mm to X = 273.02 mm.
 - The aileron body starts at constant X = 280.5 mm and reaches the local trailing edge.
