@@ -1,3 +1,5 @@
+Imports INFITF
+Imports HybridShapeTypeLib
 Imports System.Collections.Generic
 Imports System.Runtime.InteropServices
 
@@ -345,11 +347,9 @@ Friend Module WingGenerator
         ReportWingStep(progressReporter, "Planform", "Building planform and rib station references.", 3, totalSteps)
         AddPlanformGeometry(part, hybridShapeFactory, planformSet)
 
-        Dim stationProfiles As New List(Of WingStationProfile)()
-
         ReportWingStep(progressReporter, "Airfoil profiles", "Building airfoil station profiles.", 4, totalSteps)
         For Each station As WingStation In stations
-            stationProfiles.Add(AddAirfoilStationProfile(part, hybridShapeFactory, airfoilSet, station))
+            AddAirfoilStationProfile(part, hybridShapeFactory, airfoilSet, station)
         Next
 
         ReportWingStep(progressReporter, "Wing skins", "Creating split fixed-wing and aileron skin surfaces.", 5, totalSteps)
@@ -359,8 +359,7 @@ Friend Module WingGenerator
                                         shapeFactory,
                                         skinSet,
                                         aileronSkinSet,
-                                        stations,
-                                        stationProfiles)
+                                        stations)
         ReportWingStep(progressReporter, "Aileron spars", "Creating aileron rear hinge spars.", 6, totalSteps)
         AddAileronRearHingeSpars(part,
                                   hybridShapeFactory,
@@ -729,12 +728,14 @@ Friend Module WingGenerator
             effectiveSkinName = GetDefaultOuterWingSkinName()
         End If
 
-        Dim outerSkinLoft As Object = hybridShapeFactory.AddNewLoft()
+        Dim outerSkinLoft As HybridShapeLoft =
+            CType(hybridShapeFactory.AddNewLoft(), HybridShapeLoft)
         TrySetName(outerSkinLoft, effectiveSkinName)
         TrySetLoftOptions(outerSkinLoft)
 
         For Each stationProfile As WingStationProfile In stationProfiles
-            Dim profileReference As Object = part.CreateReferenceFromObject(stationProfile.ProfileSpline)
+            Dim profileReference As Reference =
+                CType(part.CreateReferenceFromObject(stationProfile.ProfileSpline), Reference)
             AddLoftSection(outerSkinLoft, profileReference, stationProfile.ClosingPointReference)
         Next
 
@@ -750,33 +751,19 @@ Friend Module WingGenerator
                                                ByVal shapeFactory As Object,
                                                ByVal fixedSkinSet As Object,
                                                ByVal aileronSkinSet As Object,
-                                               ByVal stations As List(Of WingStation),
-                                               ByVal stationProfiles As List(Of WingStationProfile))
-        Dim centerSkinProfiles As New List(Of WingStationProfile)()
-        centerSkinProfiles.Add(AddAirfoilStationProfile(part,
-                                                        hybridShapeFactory,
-                                                        fixedSkinSet,
-                                                        New WingStation("Aileron_Left_Inner_Boundary",
-                                                                        -WingDefinition.AileronInnerSpanPosition)))
-
-        For stationIndex As Integer = 0 To stations.Count - 1
-            If Math.Abs(stations(stationIndex).SpanPosition) <
-                (WingDefinition.AileronInnerSpanPosition - 0.000001) Then
-                centerSkinProfiles.Add(stationProfiles(stationIndex))
-            End If
-        Next
-
-        centerSkinProfiles.Add(AddAirfoilStationProfile(part,
-                                                        hybridShapeFactory,
-                                                        fixedSkinSet,
-                                                        New WingStation("Aileron_Right_Inner_Boundary",
-                                                                        WingDefinition.AileronInnerSpanPosition)))
-
-        CreateOuterWingSkinFromProfiles(part,
-                                        hybridShapeFactory,
-                                        fixedSkinSet,
-                                        centerSkinProfiles,
-                                        "Center fixed wing skin")
+                                               ByVal stations As List(Of WingStation))
+        CreateCenterFixedWingSkinSurface(part,
+                                         hybridShapeFactory,
+                                         fixedSkinSet,
+                                         stations,
+                                         True,
+                                         "Center fixed wing upper skin")
+        CreateCenterFixedWingSkinSurface(part,
+                                         hybridShapeFactory,
+                                         fixedSkinSet,
+                                         stations,
+                                         False,
+                                         "Center fixed wing lower skin")
         AddOutboardFixedWingSkinSurfaces(part, hybridShapeFactory, fixedSkinSet, -1.0, "Left")
         AddOutboardFixedWingSkinSurfaces(part, hybridShapeFactory, fixedSkinSet, 1.0, "Right")
 
@@ -795,6 +782,64 @@ Friend Module WingGenerator
 
         RequireUpdatePart(part, "Stage 4C split fixed wing and aileron skin surfaces")
     End Sub
+
+    Private Function CreateCenterFixedWingSkinSurface(ByVal part As Object,
+                                                      ByVal hybridShapeFactory As Object,
+                                                      ByVal targetSet As Object,
+                                                      ByVal stations As List(Of WingStation),
+                                                      ByVal upperSurface As Boolean,
+                                                      ByVal skinName As String) As Object
+        Dim centerSkinProfiles As New List(Of WingStationProfile)()
+
+        centerSkinProfiles.Add(AddOpenAirfoilSurfaceProfile(part,
+                                                            hybridShapeFactory,
+                                                            targetSet,
+                                                            New WingStation("Aileron_Left_Inner_Boundary",
+                                                                            -WingDefinition.AileronInnerSpanPosition),
+                                                            upperSurface))
+
+        For Each station As WingStation In stations
+            If Math.Abs(station.SpanPosition) <
+                (WingDefinition.AileronInnerSpanPosition - 0.000001) Then
+                centerSkinProfiles.Add(AddOpenAirfoilSurfaceProfile(part,
+                                                                    hybridShapeFactory,
+                                                                    targetSet,
+                                                                    station,
+                                                                    upperSurface))
+            End If
+        Next
+
+        centerSkinProfiles.Add(AddOpenAirfoilSurfaceProfile(part,
+                                                            hybridShapeFactory,
+                                                            targetSet,
+                                                            New WingStation("Aileron_Right_Inner_Boundary",
+                                                                            WingDefinition.AileronInnerSpanPosition),
+                                                            upperSurface))
+
+        Return CreateOuterWingSkinFromProfiles(part,
+                                               hybridShapeFactory,
+                                               targetSet,
+                                               centerSkinProfiles,
+                                               skinName)
+    End Function
+
+    Private Function AddOpenAirfoilSurfaceProfile(ByVal part As Object,
+                                                  ByVal hybridShapeFactory As Object,
+                                                  ByVal targetSet As Object,
+                                                  ByVal station As WingStation,
+                                                  ByVal upperSurface As Boolean) As WingStationProfile
+        Dim chordLength As Double = WingDefinition.GetChordAtSpanPosition(station.SpanPosition)
+        Dim surfaceLabel As String = If(upperSurface, "upper", "lower")
+        Dim pointLabel As String = If(upperSurface, "Upper", "Lower")
+
+        Return AddOpenSplitSkinProfile(part,
+                                       hybridShapeFactory,
+                                       targetSet,
+                                       "Center fixed wing " & surfaceLabel & " profile " & station.Name,
+                                       "Center_Fixed_Wing_" & pointLabel & "_" & station.Name,
+                                       station.SpanPosition,
+                                       BuildAirfoilSurfaceProfileCoordinates(chordLength, upperSurface))
+    End Function
 
     Private Sub AddOutboardFixedWingSkinSurfaces(ByVal part As Object,
                                                  ByVal hybridShapeFactory As Object,
@@ -955,6 +1000,38 @@ Friend Module WingGenerator
         targetSet.AppendHybridShape(profileSpline)
 
         Return New WingStationProfile(profileName, profileSpline, closingPointReference)
+    End Function
+
+    Private Function AddOpenSplitSkinProfile(ByVal part As Object,
+                                             ByVal hybridShapeFactory As Object,
+                                             ByVal targetSet As Object,
+                                             ByVal profileName As String,
+                                             ByVal pointPrefix As String,
+                                             ByVal spanPosition As Double,
+                                             ByVal skinCoordinates As List(Of AirfoilCoordinate)) As WingStationProfile
+        If skinCoordinates.Count < 2 Then
+            Throw New InvalidOperationException("At least two points are required for " & profileName & ".")
+        End If
+
+        Dim profileSpline As Object = hybridShapeFactory.AddNewSpline()
+        TrySetSplineOptions(profileSpline, False)
+        TrySetName(profileSpline, profileName)
+
+        For pointIndex As Integer = 0 To skinCoordinates.Count - 1
+            Dim coordinate As AirfoilCoordinate = skinCoordinates(pointIndex)
+            Dim profilePoint As Object = hybridShapeFactory.AddNewPointCoord(coordinate.X,
+                                                                             spanPosition,
+                                                                             coordinate.Y)
+            TrySetName(profilePoint,
+                       pointPrefix & "_P" & (pointIndex + 1).ToString("000"))
+            targetSet.AppendHybridShape(profilePoint)
+
+            profileSpline.AddPoint(part.CreateReferenceFromObject(profilePoint))
+        Next
+
+        targetSet.AppendHybridShape(profileSpline)
+
+        Return New WingStationProfile(profileName, profileSpline, Nothing)
     End Function
 
     Private Sub AddAileronCutReferenceGeometry(ByVal part As Object,
@@ -1119,14 +1196,16 @@ Friend Module WingGenerator
         RequireUpdateObject(part, curveSpline, curveName)
     End Sub
 
-    Private Sub AddLoftSection(ByVal loft As Object,
-                               ByVal profileReference As Object,
+    Private Sub AddLoftSection(ByVal loft As HybridShapeLoft,
+                               ByVal profileReference As Reference,
                                ByVal closingPointReference As Object)
-        If closingPointReference Is Nothing Then
-            Throw New InvalidOperationException("A loft section coupling point reference is required.")
+        Dim couplingReference As Reference = CType(Nothing, Reference)
+
+        If closingPointReference IsNot Nothing Then
+            couplingReference = CType(closingPointReference, Reference)
         End If
 
-        loft.AddSectionToLoft(profileReference, 1, closingPointReference)
+        loft.AddSectionToLoft(profileReference, 1, couplingReference)
     End Sub
 
     Private Sub AddPhysicalRibBody(ByVal part As Object,
@@ -1490,6 +1569,24 @@ Friend Module WingGenerator
         Return BuildAirfoilSegmentProfileCoordinates(chordLength,
                                                      WingDefinition.AileronFixedPanelEndX,
                                                      WingDefinition.AileronRearSparEndX)
+    End Function
+
+    Private Function BuildAirfoilSurfaceProfileCoordinates(ByVal chordLength As Double,
+                                                           ByVal upperSurface As Boolean) As List(Of AirfoilCoordinate)
+        Dim profileCoordinates As New List(Of AirfoilCoordinate)()
+        Dim segmentCount As Integer = Math.Max(24, WingDefinition.PointCountPerSurface - 1)
+
+        For pointIndex As Integer = 0 To segmentCount
+            Dim ratio As Double = CDbl(pointIndex) / CDbl(segmentCount)
+            Dim globalX As Double = chordLength * ratio
+
+            AddAirfoilCoordinateIfDistinct(profileCoordinates,
+                                           GetAirfoilSurfacePointAtGlobalX(chordLength,
+                                                                          globalX,
+                                                                          upperSurface))
+        Next
+
+        Return profileCoordinates
     End Function
 
     Private Function BuildAirfoilSegmentProfileCoordinates(ByVal chordLength As Double,
