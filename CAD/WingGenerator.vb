@@ -21,7 +21,44 @@ Friend Module WingGenerator
         End Sub
     End Structure
 
+    Private Sub ApplyWingConfiguration(ByVal configuration As WingConfiguration)
+        WingDefinition.UseConfiguration(configuration)
+    End Sub
+
+    Private Function GetWingAirfoilLabel() As String
+        Dim configuration As WingConfiguration = WingDefinition.Configuration
+
+        If configuration Is Nothing OrElse
+            configuration.Airfoil Is Nothing OrElse
+            String.IsNullOrWhiteSpace(configuration.Airfoil.NacaCode) Then
+            Return "NACA airfoil"
+        End If
+
+        Return configuration.Airfoil.NacaCode.Trim()
+    End Function
+
+    Private Function GetWingAirfoilIdentifier() As String
+        Return GetWingAirfoilLabel().Replace(" ", "")
+    End Function
+
+    Private Function GetStationProfileSetName(ByVal stageName As String) As String
+        Return stageName & " - " & GetWingAirfoilLabel() & " Station Profiles"
+    End Function
+
+    Private Function GetDefaultOuterWingSkinName() As String
+        Return GetWingAirfoilLabel() & " outer wing skin"
+    End Function
+
     Friend Function CreateStage4APhysicalRibs() As Object
+        Return CreateStage4APhysicalRibs(WingConfiguration.CreateDefault())
+    End Function
+
+    Friend Function CreateStage4APhysicalRibs(ByVal configuration As WingConfiguration) As Object
+        ApplyWingConfiguration(configuration)
+        Return CreateStage4APhysicalRibsCore()
+    End Function
+
+    Private Function CreateStage4APhysicalRibsCore() As Object
         Dim catiaApplication As Object = GetOrCreateCatiaApplication()
         catiaApplication.Visible = True
 
@@ -37,7 +74,7 @@ Friend Module WingGenerator
         TrySetName(planformSet, "Stage 4A - Planform and Rib Stations")
 
         Dim airfoilSet As Object = hybridBodies.Add()
-        TrySetName(airfoilSet, "Stage 4A - NACA 4415 Station Profiles")
+        TrySetName(airfoilSet, GetStationProfileSetName("Stage 4A"))
 
         Dim skinSet As Object = hybridBodies.Add()
         TrySetName(skinSet, "Stage 4A - Outer Wing Skin")
@@ -74,6 +111,15 @@ Friend Module WingGenerator
     End Function
 
     Friend Function CreateStage4BPhysicalRibsAndMainSpar() As Object
+        Return CreateStage4BPhysicalRibsAndMainSpar(WingConfiguration.CreateDefault())
+    End Function
+
+    Friend Function CreateStage4BPhysicalRibsAndMainSpar(ByVal configuration As WingConfiguration) As Object
+        ApplyWingConfiguration(configuration)
+        Return CreateStage4BPhysicalRibsAndMainSparCore()
+    End Function
+
+    Private Function CreateStage4BPhysicalRibsAndMainSparCore() As Object
         Dim catiaApplication As Object = GetOrCreateCatiaApplication()
         catiaApplication.Visible = True
 
@@ -89,7 +135,7 @@ Friend Module WingGenerator
         TrySetName(planformSet, "Stage 4B - Planform and Rib Stations")
 
         Dim airfoilSet As Object = hybridBodies.Add()
-        TrySetName(airfoilSet, "Stage 4B - NACA 4415 Station Profiles")
+        TrySetName(airfoilSet, GetStationProfileSetName("Stage 4B"))
 
         Dim skinSet As Object = hybridBodies.Add()
         TrySetName(skinSet, "Stage 4B - Outer Wing Skin")
@@ -139,6 +185,15 @@ Friend Module WingGenerator
     End Function
 
     Friend Function CreateStage4CPhysicalRibsMainSparAndAilerons() As Object
+        Return CreateStage4CPhysicalRibsMainSparAndAilerons(WingConfiguration.CreateDefault())
+    End Function
+
+    Friend Function CreateStage4CPhysicalRibsMainSparAndAilerons(ByVal configuration As WingConfiguration) As Object
+        ApplyWingConfiguration(configuration)
+        Return CreateStage4CPhysicalRibsMainSparAndAileronsCore()
+    End Function
+
+    Private Function CreateStage4CPhysicalRibsMainSparAndAileronsCore() As Object
         Dim catiaApplication As Object = GetOrCreateCatiaApplication()
         catiaApplication.Visible = True
 
@@ -154,7 +209,7 @@ Friend Module WingGenerator
         TrySetName(planformSet, "Stage 4C - Planform and Rib Stations")
 
         Dim airfoilSet As Object = hybridBodies.Add()
-        TrySetName(airfoilSet, "Stage 4C - NACA 4415 Station Profiles")
+        TrySetName(airfoilSet, GetStationProfileSetName("Stage 4C"))
 
         Dim skinSet As Object = hybridBodies.Add()
         TrySetName(skinSet, "Stage 4C - Outer Wing Skin")
@@ -223,6 +278,15 @@ Friend Module WingGenerator
     End Function
 
     Friend Function CreateStage3OuterWingSkin() As Object
+        Return CreateStage3OuterWingSkin(WingConfiguration.CreateDefault())
+    End Function
+
+    Friend Function CreateStage3OuterWingSkin(ByVal configuration As WingConfiguration) As Object
+        ApplyWingConfiguration(configuration)
+        Return CreateStage3OuterWingSkinCore()
+    End Function
+
+    Private Function CreateStage3OuterWingSkinCore() As Object
         Dim catiaApplication As Object = GetOrCreateCatiaApplication()
         catiaApplication.Visible = True
 
@@ -238,7 +302,7 @@ Friend Module WingGenerator
         TrySetName(planformSet, "Stage 3 - Planform and Rib Stations")
 
         Dim airfoilSet As Object = hybridBodies.Add()
-        TrySetName(airfoilSet, "Stage 3 - NACA 4415 Station Profiles")
+        TrySetName(airfoilSet, GetStationProfileSetName("Stage 3"))
 
         Dim skinSet As Object = hybridBodies.Add()
         TrySetName(skinSet, "Stage 3 - Outer Wing Skin")
@@ -265,14 +329,23 @@ Friend Module WingGenerator
     End Function
 
     Friend Function CreateStage2AirfoilStations() As Object
+        Return CreateStage2AirfoilStations(WingConfiguration.CreateDefault())
+    End Function
+
+    Friend Function CreateStage2AirfoilStations(ByVal configuration As WingConfiguration) As Object
+        ApplyWingConfiguration(configuration)
+        Return CreateStage2AirfoilStationsCore()
+    End Function
+
+    Private Function CreateStage2AirfoilStationsCore() As Object
         Dim catiaApplication As Object = GetOrCreateCatiaApplication()
         catiaApplication.Visible = True
 
         Dim partDocument As Object = catiaApplication.Documents.Add("Part")
-        TrySetPartNumber(partDocument, "Stage_2_Tapered_Wing_NACA4415_Stations")
+        TrySetPartNumber(partDocument, "Stage_2_Tapered_Wing_" & GetWingAirfoilIdentifier() & "_Stations")
 
         Dim part As Object = partDocument.Part
-        TrySetName(part, "Stage_2_Tapered_Wing_NACA4415_Stations")
+        TrySetName(part, "Stage_2_Tapered_Wing_" & GetWingAirfoilIdentifier() & "_Stations")
 
         Dim hybridBodies As Object = part.HybridBodies
 
@@ -280,7 +353,7 @@ Friend Module WingGenerator
         TrySetName(planformSet, "Stage 2 - Planform and Rib Stations")
 
         Dim airfoilSet As Object = hybridBodies.Add()
-        TrySetName(airfoilSet, "Stage 2 - NACA 4415 Station Profiles")
+        TrySetName(airfoilSet, GetStationProfileSetName("Stage 2"))
 
         Dim hybridShapeFactory As Object = part.HybridShapeFactory
 
@@ -297,6 +370,15 @@ Friend Module WingGenerator
     End Function
 
     Friend Function CreateStage1Planform() As Object
+        Return CreateStage1Planform(WingConfiguration.CreateDefault())
+    End Function
+
+    Friend Function CreateStage1Planform(ByVal configuration As WingConfiguration) As Object
+        ApplyWingConfiguration(configuration)
+        Return CreateStage1PlanformCore()
+    End Function
+
+    Private Function CreateStage1PlanformCore() As Object
         Dim catiaApplication As Object = GetOrCreateCatiaApplication()
         catiaApplication.Visible = True
 
@@ -459,13 +541,19 @@ Friend Module WingGenerator
                                                      ByVal hybridShapeFactory As Object,
                                                      ByVal targetSet As Object,
                                                      ByVal stationProfiles As List(Of WingStationProfile),
-                                                     Optional ByVal skinName As String = "NACA 4415 outer wing skin") As Object
+                                                     Optional ByVal skinName As String = Nothing) As Object
         If stationProfiles.Count < 2 Then
             Throw New InvalidOperationException("At least two airfoil station profiles are required to create the wing skin.")
         End If
 
+        Dim effectiveSkinName As String = skinName
+
+        If String.IsNullOrWhiteSpace(effectiveSkinName) Then
+            effectiveSkinName = GetDefaultOuterWingSkinName()
+        End If
+
         Dim outerSkinLoft As Object = hybridShapeFactory.AddNewLoft()
-        TrySetName(outerSkinLoft, skinName)
+        TrySetName(outerSkinLoft, effectiveSkinName)
         TrySetLoftOptions(outerSkinLoft)
 
         For Each stationProfile As WingStationProfile In stationProfiles
@@ -474,7 +562,7 @@ Friend Module WingGenerator
         Next
 
         targetSet.AppendHybridShape(outerSkinLoft)
-        RequireUpdateObject(part, outerSkinLoft, skinName)
+        RequireUpdateObject(part, outerSkinLoft, effectiveSkinName)
 
         Return outerSkinLoft
     End Function
@@ -1192,7 +1280,7 @@ Friend Module WingGenerator
         Next
 
         If intersectionZValues.Count = 0 Then
-            Throw New InvalidOperationException("No NACA 4415 surface point was found at X = " & globalX.ToString() & " mm.")
+            Throw New InvalidOperationException("No " & GetWingAirfoilLabel() & " surface point was found at X = " & globalX.ToString() & " mm.")
         End If
 
         Dim surfaceZ As Double = intersectionZValues(0)

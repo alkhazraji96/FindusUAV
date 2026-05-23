@@ -6,40 +6,53 @@ Imports KnowledgewareTypeLib
 Imports System.Runtime.InteropServices
 
 Public Class TailGenerator
+    Private Const TailMainSparChordFraction As Double = 0.25
+    Private Const ForwardLighteningCutoutChordFraction As Double = 0.35
+    Private Const MiddleLighteningCutoutChordFraction As Double = 0.48
+    Private Const AftLighteningCutoutChordFraction As Double = 0.6
 
     ' =====================================================
     ' MAIN RUN FUNCTION (Now Shared)
     ' =====================================================
     Public Shared Sub Run()
+        Run(TailConfiguration.CreateDefault())
+    End Sub
 
-        Dim resolution As Integer = 50
-        Dim ribThickness As Double = 2.0
-        Dim mainSparRadius As Double = 3.0 ' 6mm overall cylinder diameter
+    Friend Shared Sub Run(ByVal configuration As TailConfiguration)
+        Dim validationResult As ConfigurationValidationResult =
+            TailConfigurationValidator.Validate(configuration)
+        validationResult.ThrowIfInvalid()
+
+        Dim resolution As Integer = configuration.PointCountPerSurface
+        Dim ribThickness As Double = configuration.RibThickness
+        Dim mainSparRadius As Double = configuration.MainSpar.MainSparRadius
 
         ' =====================================================
         ' AIRCRAFT PARAMETERS
         ' =====================================================
-        Dim tailDistanceOffset As Double = 1500.0
-        Dim horizChord As Double = 150.0
+        Dim tailDistanceOffset As Double = configuration.DistanceOffset
+        Dim horizChord As Double = configuration.HorizontalStabilizer.Chord
 
         ' Horizontal Stabilizer
-        Dim horizHalfSpan As Double = 350.0
-        Dim horizRibCount As Integer = 8
-        Dim horizOffset As Double = tailDistanceOffset
+        Dim horizHalfSpan As Double = configuration.HorizontalStabilizer.HalfSpan
+        Dim horizRibCount As Integer = configuration.HorizontalStabilizer.RibCount
+        Dim horizOffset As Double = configuration.HorizontalOffset
+        Dim horizontalAirfoil As AirfoilConfiguration = configuration.HorizontalStabilizer.Airfoil
 
         ' Vertical Stabilizer (Tapered)
-        Dim vertRootChord As Double = horizChord
-        Dim vertTipChord As Double = 75.0
-        Dim vertSpan As Double = 250.0
-        Dim vertRibCount As Integer = 4
+        Dim vertRootChord As Double = configuration.VerticalStabilizer.RootChord
+        Dim vertTipChord As Double = configuration.VerticalStabilizer.TipChord
+        Dim vertSpan As Double = configuration.VerticalStabilizer.Span
+        Dim vertRibCount As Integer = configuration.VerticalStabilizer.RibCount
+        Dim verticalAirfoil As AirfoilConfiguration = configuration.VerticalStabilizer.Airfoil
 
         ' Sweep Logic
-        Dim vertRootOffset As Double = tailDistanceOffset
-        Dim trailingEdgeX As Double = tailDistanceOffset + vertRootChord
-        Dim vertTipOffset As Double = trailingEdgeX - vertTipChord
+        Dim vertRootOffset As Double = configuration.VerticalRootOffset
+        Dim trailingEdgeX As Double = configuration.VerticalTrailingEdgeX
+        Dim vertTipOffset As Double = configuration.VerticalTipOffset
 
         ' Rudder Clearance (Raises the bottom of the rudder to clear the elevator)
-        Dim rudderClearanceZ As Double = 25.0 ' Adjust this value to increase/decrease pitch clearance
+        Dim rudderClearanceZ As Double = configuration.RudderClearance
 
         ' =====================================================
         ' CONNECT TO CATIA
@@ -104,11 +117,11 @@ Public Class TailGenerator
             Dim localPlaneRef As Reference = activePart.CreateReferenceFromObject(planeOffset)
 
             ' Calling Shared method directly without instantiation
-            Dim mainPts = AirfoilGenerator.GeneratePartialSymmetricNACA(horizChord, 0.12, resolution, horizOffset, 0.0, 0.72)
+            Dim mainPts = AirfoilGenerator.GeneratePartialNACA(horizChord, horizontalAirfoil, resolution, horizOffset, 0.0, 0.72)
 
             ' 1. STRUCTURAL RIB
             Dim isEdgeRib As Boolean = (i = 0 OrElse i = horizRibCount - 1)
-            Dim structSketch = DrawRibSketch(activePart, localPlaneRef, mainPts, "Horiz_StructRib_" & i, "Horizontal", Not isEdgeRib, horizOffset, horizChord)
+            Dim structSketch = DrawRibSketch(activePart, localPlaneRef, mainPts, "Horiz_StructRib_" & i, "Horizontal", Not isEdgeRib, horizOffset, horizChord, horizontalAirfoil)
 
             activePart.InWorkObject = activePart.MainBody
             Dim pad As Pad = shapeFactory.AddNewPad(structSketch, ribThickness)
@@ -127,8 +140,9 @@ Public Class TailGenerator
         Next
 
         ' A. MAIN CYLINDRICAL SPAR (Horizontal)
-        Dim hMainX As Double = horizOffset + (horizChord * 0.25)
-        Dim hMainSparSk = DrawCylinderSketch(activePart, zxPlaneRef, hMainX, 0.0, 0.0, mainSparRadius, "Horiz_Main_Spar_Cyl", "Horizontal")
+        Dim hMainX As Double = horizOffset + (horizChord * TailMainSparChordFraction)
+        Dim hMainCamberY As Double = GetAirfoilMeanCamberY(horizChord, horizontalAirfoil, TailMainSparChordFraction)
+        Dim hMainSparSk = DrawCylinderSketch(activePart, zxPlaneRef, hMainX, 0.0, hMainCamberY, mainSparRadius, "Horiz_Main_Spar_Cyl", "Horizontal")
         activePart.InWorkObject = activePart.MainBody
         Dim hMainSparPad As Pad = shapeFactory.AddNewPad(hMainSparSk, horizHalfSpan)
         hMainSparPad.SecondLimit.Dimension.Value = horizHalfSpan
@@ -136,7 +150,7 @@ Public Class TailGenerator
         activePart.UpdateObject(hMainSparPad)
 
         ' B. REAR HINGE SPAR (Horizontal)
-        Dim hRearSparPts = AirfoilGenerator.GeneratePartialSymmetricNACA(horizChord, 0.12, resolution, horizOffset, 0.72, 0.75)
+        Dim hRearSparPts = AirfoilGenerator.GeneratePartialNACA(horizChord, horizontalAirfoil, resolution, horizOffset, 0.72, 0.75)
         Dim hRearSparSk = DrawGenericSketch(activePart, zxPlaneRef, hRearSparPts, "Horiz_Rear_Spar_Sketch", "Horizontal")
         activePart.InWorkObject = activePart.MainBody
         Dim hRearSparPad As Pad = shapeFactory.AddNewPad(hRearSparSk, horizHalfSpan)
@@ -161,11 +175,11 @@ Public Class TailGenerator
             activePart.UpdateObject(planeOffset)
             Dim localPlaneRef As Reference = activePart.CreateReferenceFromObject(planeOffset)
 
-            Dim mainPts = AirfoilGenerator.GeneratePartialSymmetricNACA(localChord, 0.12, resolution, localOffset, 0.0, 0.72)
+            Dim mainPts = AirfoilGenerator.GeneratePartialNACA(localChord, verticalAirfoil, resolution, localOffset, 0.0, 0.72)
 
             ' 1. STRUCTURAL RIB 
             Dim isEdgeRib As Boolean = (i = 0 OrElse i = vertRibCount - 1)
-            Dim structSketch = DrawRibSketch(activePart, localPlaneRef, mainPts, "Vert_StructRib_" & i, "Vertical", Not isEdgeRib, localOffset, localChord)
+            Dim structSketch = DrawRibSketch(activePart, localPlaneRef, mainPts, "Vert_StructRib_" & i, "Vertical", Not isEdgeRib, localOffset, localChord, verticalAirfoil)
 
             activePart.InWorkObject = activePart.MainBody
             Dim pad As Pad = shapeFactory.AddNewPad(structSketch, ribThickness)
@@ -188,15 +202,17 @@ Public Class TailGenerator
         Dim vertTipPlaneRef As Reference = activePart.CreateReferenceFromObject(vertTipPlane)
 
         ' A. MAIN CYLINDRICAL SPAR (Vertical - Tapered Loft)
-        Dim vMainRootX As Double = vertRootOffset + (vertRootChord * 0.25)
-        Dim vMainTipX As Double = vertTipOffset + (vertTipChord * 0.25)
-        Dim vMainSparRootSk = DrawCylinderSketch(activePart, xyPlaneRef, vMainRootX, 0.0, 0.0, mainSparRadius, "Vert_Main_Spar_Root", "Vertical")
-        Dim vMainSparTipSk = DrawCylinderSketch(activePart, vertTipPlaneRef, vMainTipX, 0.0, vertSpan, mainSparRadius, "Vert_Main_Spar_Tip", "Vertical")
+        Dim vMainRootX As Double = vertRootOffset + (vertRootChord * TailMainSparChordFraction)
+        Dim vMainTipX As Double = vertTipOffset + (vertTipChord * TailMainSparChordFraction)
+        Dim vMainRootCamberY As Double = GetAirfoilMeanCamberY(vertRootChord, verticalAirfoil, TailMainSparChordFraction)
+        Dim vMainTipCamberY As Double = GetAirfoilMeanCamberY(vertTipChord, verticalAirfoil, TailMainSparChordFraction)
+        Dim vMainSparRootSk = DrawCylinderSketch(activePart, xyPlaneRef, vMainRootX, vMainRootCamberY, 0.0, mainSparRadius, "Vert_Main_Spar_Root", "Vertical")
+        Dim vMainSparTipSk = DrawCylinderSketch(activePart, vertTipPlaneRef, vMainTipX, vMainTipCamberY, vertSpan, mainSparRadius, "Vert_Main_Spar_Tip", "Vertical")
         CreateSolidLoftSecurely(activePart, hybridShapeFactory, skinSet, vMainSparRootSk, vMainSparTipSk, "Vertical_Main_Spar")
 
         ' B. REAR HINGE SPAR (Vertical)
-        Dim vRearSparRootPts = AirfoilGenerator.GeneratePartialSymmetricNACA(vertRootChord, 0.12, resolution, vertRootOffset, 0.72, 0.75)
-        Dim vRearSparTipPts = AirfoilGenerator.GeneratePartialSymmetricNACA(vertTipChord, 0.12, resolution, vertTipOffset, 0.72, 0.75)
+        Dim vRearSparRootPts = AirfoilGenerator.GeneratePartialNACA(vertRootChord, verticalAirfoil, resolution, vertRootOffset, 0.72, 0.75)
+        Dim vRearSparTipPts = AirfoilGenerator.GeneratePartialNACA(vertTipChord, verticalAirfoil, resolution, vertTipOffset, 0.72, 0.75)
         Dim vRearSparRootSk = DrawGenericSketch(activePart, xyPlaneRef, vRearSparRootPts, "Vert_Rear_Spar_Root", "Vertical")
         Dim vRearSparTipSk = DrawGenericSketch(activePart, vertTipPlaneRef, vRearSparTipPts, "Vert_Rear_Spar_Tip", "Vertical")
         CreateSolidLoftSecurely(activePart, hybridShapeFactory, skinSet, vRearSparRootSk, vRearSparTipSk, "Vertical_Rear_Spar")
@@ -213,8 +229,8 @@ Public Class TailGenerator
         activePart.UpdateObject(rudderClearancePlane)
         Dim rudderClearancePlaneRef As Reference = activePart.CreateReferenceFromObject(rudderClearancePlane)
 
-        Dim vRudRootPts = AirfoilGenerator.GeneratePartialSymmetricNACA(vRudLocalRootChord, 0.12, resolution, vRudLocalRootOffset, 0.77, 1.0)
-        Dim vRudTipPts = AirfoilGenerator.GeneratePartialSymmetricNACA(vertTipChord, 0.12, resolution, vertTipOffset, 0.77, 1.0)
+        Dim vRudRootPts = AirfoilGenerator.GeneratePartialNACA(vRudLocalRootChord, verticalAirfoil, resolution, vRudLocalRootOffset, 0.77, 1.0)
+        Dim vRudTipPts = AirfoilGenerator.GeneratePartialNACA(vertTipChord, verticalAirfoil, resolution, vertTipOffset, 0.77, 1.0)
 
         Dim vRudRootSketch = DrawRibSketch(activePart, rudderClearancePlaneRef, vRudRootPts, "Vert_Rudder_Root", "Vertical", False, 0, 0)
         Dim vRudTipSketch = DrawRibSketch(activePart, vertTipPlaneRef, vRudTipPts, "Vert_Rudder_Tip", "Vertical", False, 0, 0)
@@ -228,7 +244,7 @@ Public Class TailGenerator
         ' =====================================================
         ' 4. HORIZONTAL ELEVATOR GENERATION
         ' =====================================================
-        Dim hElevPts = AirfoilGenerator.GeneratePartialSymmetricNACA(horizChord, 0.12, resolution, horizOffset, 0.77, 1.0)
+        Dim hElevPts = AirfoilGenerator.GeneratePartialNACA(horizChord, horizontalAirfoil, resolution, horizOffset, 0.77, 1.0)
         Dim hElevSketch = DrawRibSketch(activePart, zxPlaneRef, hElevPts, "Horizontal_Elevator_Sketch", "Horizontal", False, 0, 0)
         activePart.InWorkObject = activePart.MainBody
         Dim hElevPad As Pad = shapeFactory.AddNewPad(hElevSketch, horizHalfSpan)
@@ -336,7 +352,7 @@ Public Class TailGenerator
         Return sketch
     End Function
 
-    Private Shared Function DrawRibSketch(activePart As Part, planeRef As Reference, points As List(Of Point3D), name As String, tailType As String, drawHoles As Boolean, offset As Double, chord As Double) As Sketch
+    Private Shared Function DrawRibSketch(activePart As Part, planeRef As Reference, points As List(Of Point3D), name As String, tailType As String, drawHoles As Boolean, offset As Double, chord As Double, Optional airfoil As AirfoilConfiguration = Nothing) As Sketch
         Dim sketch As Sketch = activePart.MainBody.Sketches.Add(planeRef)
         sketch.Name = name
         Dim factory2D As Factory2D = sketch.OpenEdition()
@@ -366,24 +382,61 @@ Public Class TailGenerator
             Dim r2 As Double = chord * 0.035
             Dim r3 As Double = chord * 0.025
 
-            Dim c1X As Double = offset + (chord * 0.35)
-            Dim c2X As Double = offset + (chord * 0.48)
-            Dim c3X As Double = offset + (chord * 0.6)
+            Dim c1X As Double = offset + (chord * ForwardLighteningCutoutChordFraction)
+            Dim c2X As Double = offset + (chord * MiddleLighteningCutoutChordFraction)
+            Dim c3X As Double = offset + (chord * AftLighteningCutoutChordFraction)
+
+            Dim c1Y As Double = GetAirfoilMeanCamberY(chord, airfoil, ForwardLighteningCutoutChordFraction)
+            Dim c2Y As Double = GetAirfoilMeanCamberY(chord, airfoil, MiddleLighteningCutoutChordFraction)
+            Dim c3Y As Double = GetAirfoilMeanCamberY(chord, airfoil, AftLighteningCutoutChordFraction)
 
             If tailType = "Horizontal" Then
-                factory2D.CreateClosedCircle(0, c1X, r1)
-                factory2D.CreateClosedCircle(0, c2X, r2)
-                factory2D.CreateClosedCircle(0, c3X, r3)
+                factory2D.CreateClosedCircle(c1Y, c1X, r1)
+                factory2D.CreateClosedCircle(c2Y, c2X, r2)
+                factory2D.CreateClosedCircle(c3Y, c3X, r3)
             Else
-                factory2D.CreateClosedCircle(c1X, 0, r1)
-                factory2D.CreateClosedCircle(c2X, 0, r2)
-                factory2D.CreateClosedCircle(c3X, 0, r3)
+                factory2D.CreateClosedCircle(c1X, c1Y, r1)
+                factory2D.CreateClosedCircle(c2X, c2Y, r2)
+                factory2D.CreateClosedCircle(c3X, c3Y, r3)
             End If
         End If
 
         sketch.CloseEdition()
         activePart.UpdateObject(sketch)
         Return sketch
+    End Function
+
+    Private Shared Function GetAirfoilMeanCamberY(ByVal chord As Double,
+                                                  ByVal airfoil As AirfoilConfiguration,
+                                                  ByVal chordFraction As Double) As Double
+        If airfoil Is Nothing OrElse
+            chord <= 0.0 OrElse
+            chordFraction <= 0.0 OrElse
+            chordFraction >= 1.0 OrElse
+            airfoil.MaximumCamber <= 0.0 OrElse
+            airfoil.MaximumCamberPosition <= 0.0 Then
+            Return 0.0
+        End If
+
+        Dim normalizedCamber As Double = 0.0
+
+        If chordFraction <= airfoil.MaximumCamberPosition Then
+            normalizedCamber = (airfoil.MaximumCamber / Math.Pow(airfoil.MaximumCamberPosition, 2.0)) *
+                ((2.0 * airfoil.MaximumCamberPosition * chordFraction) - Math.Pow(chordFraction, 2.0))
+        Else
+            Dim aftCamberLength As Double = 1.0 - airfoil.MaximumCamberPosition
+
+            If aftCamberLength <= 0.0 Then
+                Return 0.0
+            End If
+
+            normalizedCamber = (airfoil.MaximumCamber / Math.Pow(aftCamberLength, 2.0)) *
+                ((1.0 - (2.0 * airfoil.MaximumCamberPosition)) +
+                 (2.0 * airfoil.MaximumCamberPosition * chordFraction) -
+                 Math.Pow(chordFraction, 2.0))
+        End If
+
+        Return normalizedCamber * chord
     End Function
 
     Private Shared Sub CreateSolidLoftSecurely(activePart As Part, factory As HybridShapeFactory, skinSet As HybridBody, rootSketch As Sketch, tipSketch As Sketch, name As String)
@@ -424,8 +477,46 @@ Public Structure Point3D
     ' AIRFOIL GENERATOR
     ' =====================================================
     Public Class AirfoilGenerator
+        Friend Shared Function GeneratePartialNACA(chord As Double,
+                                                   airfoil As AirfoilConfiguration,
+                                                   numPoints As Integer,
+                                                   xOffset As Double,
+                                                   startPercent As Double,
+                                                   endPercent As Double) As List(Of Point3D)
+            If airfoil Is Nothing Then
+                Throw New ArgumentNullException("airfoil")
+            End If
+
+            Return GeneratePartialNacaProfile(chord,
+                                              airfoil.MaximumCamber,
+                                              airfoil.MaximumCamberPosition,
+                                              airfoil.MaximumThickness,
+                                              numPoints,
+                                              xOffset,
+                                              startPercent,
+                                              endPercent)
+        End Function
+
         ' Now also marked as Shared so you don't need to create an instance of AirfoilGenerator
         Public Shared Function GeneratePartialSymmetricNACA(chord As Double, thicknessRatio As Double, numPoints As Integer, xOffset As Double, startPercent As Double, endPercent As Double) As List(Of Point3D)
+            Return GeneratePartialNacaProfile(chord,
+                                              0.0,
+                                              0.0,
+                                              thicknessRatio,
+                                              numPoints,
+                                              xOffset,
+                                              startPercent,
+                                              endPercent)
+        End Function
+
+        Private Shared Function GeneratePartialNacaProfile(chord As Double,
+                                                           maximumCamber As Double,
+                                                           maximumCamberPosition As Double,
+                                                           maximumThickness As Double,
+                                                           numPoints As Integer,
+                                                           xOffset As Double,
+                                                           startPercent As Double,
+                                                           endPercent As Double) As List(Of Point3D)
             Dim profilePoints As New List(Of Point3D)
             Dim upperX As New List(Of Double)
             Dim upperY As New List(Of Double)
@@ -437,11 +528,21 @@ Public Structure Point3D
                 Dim rawX As Double = 0.5 * (1.0 - Math.Cos(beta))
                 Dim x As Double = startPercent + rawX * (endPercent - startPercent)
 
-                Dim yt As Double = 5.0 * thicknessRatio * (0.2969 * Math.Sqrt(x) - 0.126 * x - 0.3516 * Math.Pow(x, 2) + 0.2843 * Math.Pow(x, 3) - 0.1015 * Math.Pow(x, 4))
-                upperX.Add((x * chord) + xOffset)
-                upperY.Add(yt * chord)
-                lowerX.Add((x * chord) + xOffset)
-                lowerY.Add(-yt * chord)
+                Dim upperPoint As Point3D = Nothing
+                Dim lowerPoint As Point3D = Nothing
+                CalculateNacaSurfacePoints(x,
+                                           chord,
+                                           xOffset,
+                                           maximumCamber,
+                                           maximumCamberPosition,
+                                           maximumThickness,
+                                           upperPoint,
+                                           lowerPoint)
+
+                upperX.Add(upperPoint.X)
+                upperY.Add(upperPoint.Y)
+                lowerX.Add(lowerPoint.X)
+                lowerY.Add(lowerPoint.Y)
             Next
 
             For i As Integer = numPoints - 1 To 0 Step -1
@@ -455,4 +556,51 @@ Public Structure Point3D
 
             Return profilePoints
         End Function
+
+        Private Shared Sub CalculateNacaSurfacePoints(normalizedX As Double,
+                                                      chord As Double,
+                                                      xOffset As Double,
+                                                      maximumCamber As Double,
+                                                      maximumCamberPosition As Double,
+                                                      maximumThickness As Double,
+                                                      ByRef upperPoint As Point3D,
+                                                      ByRef lowerPoint As Point3D)
+            Dim thickness As Double = 5.0 * maximumThickness *
+                ((0.2969 * Math.Sqrt(normalizedX)) -
+                 (0.126 * normalizedX) -
+                 (0.3516 * Math.Pow(normalizedX, 2)) +
+                 (0.2843 * Math.Pow(normalizedX, 3)) -
+                 (0.1015 * Math.Pow(normalizedX, 4)))
+            Dim camber As Double = 0.0
+            Dim camberSlope As Double = 0.0
+
+            If maximumCamber > 0.0 AndAlso maximumCamberPosition > 0.0 Then
+                If normalizedX <= maximumCamberPosition Then
+                    camber = (maximumCamber / Math.Pow(maximumCamberPosition, 2)) *
+                        ((2.0 * maximumCamberPosition * normalizedX) - Math.Pow(normalizedX, 2))
+                    camberSlope = ((2.0 * maximumCamber) / Math.Pow(maximumCamberPosition, 2)) *
+                        (maximumCamberPosition - normalizedX)
+                Else
+                    Dim aftCamberLength As Double = 1.0 - maximumCamberPosition
+
+                    If aftCamberLength > 0.0 Then
+                        camber = (maximumCamber / Math.Pow(aftCamberLength, 2)) *
+                            ((1.0 - (2.0 * maximumCamberPosition)) +
+                             (2.0 * maximumCamberPosition * normalizedX) -
+                             Math.Pow(normalizedX, 2))
+                        camberSlope = ((2.0 * maximumCamber) / Math.Pow(aftCamberLength, 2)) *
+                            (maximumCamberPosition - normalizedX)
+                    End If
+                End If
+            End If
+
+            Dim theta As Double = Math.Atan(camberSlope)
+            Dim upperX As Double = normalizedX - (thickness * Math.Sin(theta))
+            Dim upperY As Double = camber + (thickness * Math.Cos(theta))
+            Dim lowerX As Double = normalizedX + (thickness * Math.Sin(theta))
+            Dim lowerY As Double = camber - (thickness * Math.Cos(theta))
+
+            upperPoint = New Point3D((upperX * chord) + xOffset, upperY * chord, 0.0)
+            lowerPoint = New Point3D((lowerX * chord) + xOffset, lowerY * chord, 0.0)
+        End Sub
     End Class

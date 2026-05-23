@@ -1,60 +1,202 @@
 Imports System.Collections.Generic
 
 Friend Module WingDefinition
-    Friend Const FullSpan As Double = 3543.65
-    Friend Const HalfSpan As Double = FullSpan / 2.0
-    Friend Const RootChord As Double = 586.0
-    Friend Const TipChord As Double = 374.0
-    Friend Const RibCountPerSide As Integer = 14
-    Friend Const RibThickness As Double = 3.0
-    Friend Const PointCountPerSurface As Integer = 41
-    Friend Const AirfoilMaximumCamber As Double = 0.04
-    Friend Const AirfoilMaximumCamberPosition As Double = 0.4
-    Friend Const AirfoilMaximumThickness As Double = 0.15
-    Friend Const MainSparChordFraction As Double = 0.3
-    Friend Const MainSparOuterDiameter As Double = 30.0
-    Friend Const MainSparWallThickness As Double = 1.5
-    Friend Const MainSparCutoutDiameter As Double = 31.0
-    Friend Const RibLighteningCutoutEdgeMargin As Double = 6.0
-    Friend Const RibLighteningCutoutMinimumDiameter As Double = 8.0
-    Friend Const AileronSpanFraction As Double = 0.4
-    Friend Const AileronFixedPanelEndX As Double = TipChord * 0.7
-    Friend Const AileronRearSparWidth As Double = TipChord * 0.03
-    Friend Const AileronRearSparEndX As Double = AileronFixedPanelEndX + AileronRearSparWidth
-    Friend Const AileronClearanceGap As Double = TipChord * 0.02
-    Friend Const AileronPanelStartX As Double = AileronRearSparEndX + AileronClearanceGap
-    Friend Const AileronRibStationTolerance As Double = RibThickness / 2.0
+    Private activeConfiguration As WingConfiguration = WingConfiguration.CreateDefault()
+
+    Friend ReadOnly Property Configuration As WingConfiguration
+        Get
+            Return activeConfiguration
+        End Get
+    End Property
+
+    Friend Sub UseConfiguration(ByVal configuration As WingConfiguration)
+        Dim validationResult As ConfigurationValidationResult =
+            WingConfigurationValidator.Validate(configuration)
+        validationResult.ThrowIfInvalid()
+
+        activeConfiguration = configuration
+    End Sub
+
+    Friend Sub ResetToDefaultConfiguration()
+        activeConfiguration = WingConfiguration.CreateDefault()
+    End Sub
+
+    Friend ReadOnly Property FullSpan As Double
+        Get
+            Return activeConfiguration.FullSpan
+        End Get
+    End Property
+
+    Friend ReadOnly Property HalfSpan As Double
+        Get
+            Return activeConfiguration.HalfSpan
+        End Get
+    End Property
+
+    Friend ReadOnly Property RootChord As Double
+        Get
+            Return activeConfiguration.RootChord
+        End Get
+    End Property
+
+    Friend ReadOnly Property TipChord As Double
+        Get
+            Return activeConfiguration.TipChord
+        End Get
+    End Property
+
+    Friend ReadOnly Property RibCountPerSide As Integer
+        Get
+            Return activeConfiguration.Ribs.CountPerSide
+        End Get
+    End Property
+
+    Friend ReadOnly Property RibThickness As Double
+        Get
+            Return activeConfiguration.Ribs.Thickness
+        End Get
+    End Property
+
+    Friend ReadOnly Property PointCountPerSurface As Integer
+        Get
+            Return activeConfiguration.PointCountPerSurface
+        End Get
+    End Property
+
+    Friend ReadOnly Property AirfoilMaximumCamber As Double
+        Get
+            Return activeConfiguration.Airfoil.MaximumCamber
+        End Get
+    End Property
+
+    Friend ReadOnly Property AirfoilMaximumCamberPosition As Double
+        Get
+            Return activeConfiguration.Airfoil.MaximumCamberPosition
+        End Get
+    End Property
+
+    Friend ReadOnly Property AirfoilMaximumThickness As Double
+        Get
+            Return activeConfiguration.Airfoil.MaximumThickness
+        End Get
+    End Property
+
+    Friend ReadOnly Property MainSparChordFraction As Double
+        Get
+            Return activeConfiguration.MainSpar.ChordFraction
+        End Get
+    End Property
+
+    Friend ReadOnly Property MainSparOuterDiameter As Double
+        Get
+            Return activeConfiguration.MainSpar.OuterDiameter
+        End Get
+    End Property
+
+    Friend ReadOnly Property MainSparWallThickness As Double
+        Get
+            Return activeConfiguration.MainSpar.WallThickness
+        End Get
+    End Property
+
+    Friend ReadOnly Property MainSparCutoutDiameter As Double
+        Get
+            Return activeConfiguration.MainSpar.RibCutoutDiameter
+        End Get
+    End Property
+
+    Friend ReadOnly Property RibLighteningCutoutEdgeMargin As Double
+        Get
+            Return activeConfiguration.Ribs.LighteningCutoutEdgeMargin
+        End Get
+    End Property
+
+    Friend ReadOnly Property RibLighteningCutoutMinimumDiameter As Double
+        Get
+            Return activeConfiguration.Ribs.LighteningCutoutMinimumDiameter
+        End Get
+    End Property
+
+    Friend ReadOnly Property AileronSpanFraction As Double
+        Get
+            Return activeConfiguration.Aileron.SpanFraction
+        End Get
+    End Property
+
+    Friend ReadOnly Property AileronFixedPanelEndX As Double
+        Get
+            Return activeConfiguration.AileronFixedPanelEndX
+        End Get
+    End Property
+
+    Friend ReadOnly Property AileronRearSparWidth As Double
+        Get
+            Return activeConfiguration.AileronRearSparWidth
+        End Get
+    End Property
+
+    Friend ReadOnly Property AileronRearSparEndX As Double
+        Get
+            Return activeConfiguration.AileronRearSparEndX
+        End Get
+    End Property
+
+    Friend ReadOnly Property AileronClearanceGap As Double
+        Get
+            Return activeConfiguration.AileronClearanceGap
+        End Get
+    End Property
+
+    Friend ReadOnly Property AileronPanelStartX As Double
+        Get
+            Return activeConfiguration.AileronPanelStartX
+        End Get
+    End Property
+
+    Friend ReadOnly Property AileronRibStationTolerance As Double
+        Get
+            Return RibThickness / 2.0
+        End Get
+    End Property
 
     Friend ReadOnly Property MainSparInnerDiameter As Double
         Get
-            Return MainSparOuterDiameter - (2.0 * MainSparWallThickness)
+            Return activeConfiguration.MainSpar.InnerDiameter
         End Get
     End Property
 
     Friend ReadOnly Property AileronSpanLength As Double
         Get
-            Return HalfSpan * AileronSpanFraction
+            Return activeConfiguration.AileronSpanLength
         End Get
     End Property
 
     Friend ReadOnly Property AileronOuterSpanPosition As Double
         Get
-            Return HalfSpan
+            Return activeConfiguration.AileronOuterSpanPosition
         End Get
     End Property
 
     Friend ReadOnly Property AileronInnerSpanPosition As Double
         Get
-            Return AileronOuterSpanPosition - AileronSpanLength
+            Return activeConfiguration.AileronInnerSpanPosition
         End Get
     End Property
 
     Friend Function GetRibLighteningCutouts() As List(Of RibLighteningCutoutDefinition)
-        Return New List(Of RibLighteningCutoutDefinition) From {
-            New RibLighteningCutoutDefinition("Forward lightening cutout", 0.15, 22.0),
-            New RibLighteningCutoutDefinition("Middle lightening cutout", 0.5, 34.0),
-            New RibLighteningCutoutDefinition("Aft lightening cutout", 0.7, 22.0)
-        }
+        Dim cutoutDefinitions As New List(Of RibLighteningCutoutDefinition)()
+
+        If Not activeConfiguration.Ribs.LighteningCutoutsEnabled Then
+            Return cutoutDefinitions
+        End If
+
+        For Each cutout As RibLighteningCutoutConfiguration In activeConfiguration.Ribs.LighteningCutouts
+            cutoutDefinitions.Add(New RibLighteningCutoutDefinition(cutout.Name,
+                                                                    cutout.ChordFraction,
+                                                                    cutout.PreferredDiameter))
+        Next
+
+        Return cutoutDefinitions
     End Function
 
     Friend Function GetChordAtSpanPosition(ByVal spanPosition As Double) As Double
