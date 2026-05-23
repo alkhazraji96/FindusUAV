@@ -24,6 +24,13 @@ Friend Module TailConfigurationValidator
     Private Const TailMainSparDiameterMinimum As Double = 1.0
     Private Const TailMainSparDiameterMaximum As Double = 100.0
     Private Const TailMainSparChordFraction As Double = 0.25
+    Private Const TailForwardLighteningCutoutChordFraction As Double = 0.35
+    Private Const TailForwardLighteningCutoutRadiusFraction As Double = 0.03
+    Private Const TailMiddleLighteningCutoutChordFraction As Double = 0.48
+    Private Const TailMiddleLighteningCutoutRadiusFraction As Double = 0.035
+    Private Const TailAftLighteningCutoutChordFraction As Double = 0.6
+    Private Const TailAftLighteningCutoutRadiusFraction As Double = 0.025
+    Private Const TailLighteningCutoutMinimumEdgeMargin As Double = 1.0
     Private Const TailControlSurfaceStartFraction As Double = 0.77
     Private Const MinimumTipControlSurfaceChord As Double = 10.0
     Private Const ComparisonTolerance As Double = 0.000001
@@ -40,6 +47,7 @@ Friend Module TailConfigurationValidator
         ValidateHorizontalStabilizer(configuration, result)
         ValidateVerticalStabilizer(configuration, result)
         ValidateMainSpar(configuration, result)
+        ValidateLighteningCutouts(configuration, result)
         ValidateRudderClearance(configuration, result)
 
         Return result
@@ -220,6 +228,112 @@ Friend Module TailConfigurationValidator
             result.AddError(fieldName, "Tail main spar diameter does not fit inside the " & context & " airfoil at 25 percent chord.")
         End If
     End Sub
+
+    Private Sub ValidateLighteningCutouts(ByVal configuration As TailConfiguration,
+                                          ByVal result As ConfigurationValidationResult)
+        If configuration.HorizontalStabilizer IsNot Nothing AndAlso
+            configuration.HorizontalStabilizer.RibCount > 2 Then
+            ValidateTailCutoutPatternFitsAirfoil(result,
+                                                 "Tail.HorizontalStabilizer.Airfoil",
+                                                 configuration.HorizontalStabilizer.Chord,
+                                                 configuration.HorizontalStabilizer.Airfoil,
+                                                 "horizontal tail ribs")
+        End If
+
+        If configuration.VerticalStabilizer IsNot Nothing AndAlso
+            configuration.VerticalStabilizer.RibCount > 2 Then
+            ValidateTailCutoutPatternFitsAirfoil(result,
+                                                 "Tail.VerticalStabilizer.Airfoil",
+                                                 GetSmallestVerticalInteriorRibChord(configuration.VerticalStabilizer),
+                                                 configuration.VerticalStabilizer.Airfoil,
+                                                 "vertical tail ribs")
+        End If
+    End Sub
+
+    Private Sub ValidateTailCutoutPatternFitsAirfoil(ByVal result As ConfigurationValidationResult,
+                                                     ByVal fieldName As String,
+                                                     ByVal chordLength As Double,
+                                                     ByVal airfoil As AirfoilConfiguration,
+                                                     ByVal context As String)
+        Dim parsedAirfoil As AirfoilConfiguration = Nothing
+
+        If airfoil Is Nothing OrElse
+            Not NacaAirfoilParser.TryParse(airfoil.NacaCode, parsedAirfoil) Then
+            Return
+        End If
+
+        ValidateTailLighteningCutoutFitsAirfoil(result,
+                                                fieldName,
+                                                chordLength,
+                                                airfoil,
+                                                TailForwardLighteningCutoutChordFraction,
+                                                TailForwardLighteningCutoutRadiusFraction,
+                                                context,
+                                                "forward")
+        ValidateTailLighteningCutoutFitsAirfoil(result,
+                                                fieldName,
+                                                chordLength,
+                                                airfoil,
+                                                TailMiddleLighteningCutoutChordFraction,
+                                                TailMiddleLighteningCutoutRadiusFraction,
+                                                context,
+                                                "middle")
+        ValidateTailLighteningCutoutFitsAirfoil(result,
+                                                fieldName,
+                                                chordLength,
+                                                airfoil,
+                                                TailAftLighteningCutoutChordFraction,
+                                                TailAftLighteningCutoutRadiusFraction,
+                                                context,
+                                                "aft")
+    End Sub
+
+    Private Sub ValidateTailLighteningCutoutFitsAirfoil(ByVal result As ConfigurationValidationResult,
+                                                        ByVal fieldName As String,
+                                                        ByVal chordLength As Double,
+                                                        ByVal airfoil As AirfoilConfiguration,
+                                                        ByVal chordFraction As Double,
+                                                        ByVal radiusFraction As Double,
+                                                        ByVal context As String,
+                                                        ByVal cutoutName As String)
+        If airfoil Is Nothing OrElse
+            Not IsFinite(chordLength) OrElse
+            Not IsFinite(chordFraction) OrElse
+            Not IsFinite(radiusFraction) Then
+            Return
+        End If
+
+        Dim availableRadius As Double =
+            GetAirfoilHalfThicknessAtChordFraction(airfoil,
+                                                   chordFraction,
+                                                   chordLength)
+        Dim requiredRadius As Double =
+            (chordLength * radiusFraction) + TailLighteningCutoutMinimumEdgeMargin
+
+        If requiredRadius > availableRadius Then
+            result.AddError(fieldName,
+                            "The fixed " & cutoutName &
+                            " lightening cutout does not fit inside the " &
+                            context & " for this airfoil/chord. Use a thicker NACA airfoil or a larger chord.")
+        End If
+    End Sub
+
+    Private Function GetSmallestVerticalInteriorRibChord(ByVal verticalTail As VerticalTailConfiguration) As Double
+        If verticalTail Is Nothing Then
+            Return 0.0
+        End If
+
+        If verticalTail.RibCount <= 2 Then
+            Return verticalTail.TipChord
+        End If
+
+        Dim lastInteriorRibIndex As Integer = verticalTail.RibCount - 2
+        Dim normalizedSpan As Double =
+            CDbl(lastInteriorRibIndex) / CDbl(verticalTail.RibCount - 1)
+
+        Return verticalTail.RootChord +
+            (normalizedSpan * (verticalTail.TipChord - verticalTail.RootChord))
+    End Function
 
     Private Function GetAirfoilHalfThicknessAtChordFraction(ByVal airfoil As AirfoilConfiguration,
                                                             ByVal chordFraction As Double,
