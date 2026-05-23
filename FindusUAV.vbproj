@@ -60,6 +60,10 @@
     <Reference Include="System.Net.Http" />
   </ItemGroup>
   <ItemGroup>
+    <PackageReference Include="SourceGear.sqlite3" Version="3.50.4.5" ExcludeAssets="build;buildTransitive" />
+    <PackageReference Include="System.Data.SQLite" Version="2.0.3" />
+  </ItemGroup>
+  <ItemGroup>
     <Import Include="Microsoft.VisualBasic" />
     <Import Include="System" />
     <Import Include="System.Collections" />
@@ -77,6 +81,7 @@
     <Compile Include="CAD\AirfoilCoordinate.vb" />
     <Compile Include="CAD\CatiaInterop.vb" />
     <Compile Include="CAD\ConfigurationValidationResult.vb" />
+    <Compile Include="CAD\ConfigurationPresetRepository.vb" />
     <Compile Include="CAD\GenerationProgress.vb" />
     <Compile Include="CAD\GenerateAirfoil.vb" />
     <Compile Include="CAD\Naca2412SliceGenerator.vb" />
@@ -887,5 +892,17 @@
     <Folder Include="Docs\" />
     <Folder Include="Models\" />
   </ItemGroup>
+  <Target Name="CopySQLiteNativeRuntime" AfterTargets="Build">
+    <PropertyGroup>
+      <SQLiteNativeRuntimeRid>win-x86</SQLiteNativeRuntimeRid>
+      <SQLiteNativeRuntimeRid Condition="'$(PlatformTarget)' == 'x64' Or '$(Platform)' == 'x64'">win-x64</SQLiteNativeRuntimeRid>
+      <SQLiteNativeRuntimeRid Condition="'$(PlatformTarget)' == 'ARM64' Or '$(Platform)' == 'ARM64'">win-arm64</SQLiteNativeRuntimeRid>
+      <SQLiteNativeRuntimePath>$(NuGetPackageRoot)sourcegear.sqlite3\3.50.4.5\runtimes\$(SQLiteNativeRuntimeRid)\native\e_sqlite3.dll</SQLiteNativeRuntimePath>
+    </PropertyGroup>
+    <Copy SourceFiles="$(SQLiteNativeRuntimePath)"
+          DestinationFolder="$(OutDir)"
+          SkipUnchangedFiles="true"
+          Condition="Exists('$(SQLiteNativeRuntimePath)')" />
+  </Target>
   <Import Project="$(MSBuildToolsPath)\Microsoft.VisualBasic.targets" />
 </Project>
