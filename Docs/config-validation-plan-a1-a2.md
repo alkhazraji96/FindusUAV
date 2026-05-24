@@ -39,7 +39,7 @@ Plan A1 does not include:
 - Progress bar.
 - PowerCopy conversion.
 - Major production refactoring.
-- Twist, dihedral, sweep, or skin thickness.
+- Twist, forward sweep, or skin thickness.
 - Arbitrary control-surface start/end positions.
 - Custom hinge gaps, custom rear spar widths, or custom control-surface chord fractions.
 
@@ -81,6 +81,8 @@ These wing inputs are allowed in Plan A1:
 | Full span | Double, mm | 3543.65 | Total wing span. Half span is derived. |
 | Root chord | Double, mm | 586.0 | Center chord. |
 | Tip chord | Double, mm | 374.0 | Tip chord. |
+| Sweep angle | Double, degrees | 0.0 | Swept back only, validated from 0 to 30 degrees. |
+| Dihedral angle | Double, degrees | 0.0 | Upward only, validated from 0 to 8 degrees. |
 | Wing airfoil | NACA 4-digit string | NACA 4415 | Applies to all wing stations. |
 | Rib count per side | Integer | 14 | Total ribs = `(2 * perSide) + 1`. |
 | Rib thickness | Double, mm | 3.0 | Centered rib pad thickness. |
@@ -89,7 +91,13 @@ These wing inputs are allowed in Plan A1:
 | Main spar outer diameter | Double, mm | 30.0 | Circular hollow tube outer diameter. |
 | Main spar wall thickness | Double, mm | 1.5 | Must leave positive inner diameter. |
 | Main spar rib cutout diameter | Double, mm | 31.0 | Should be larger than spar OD. |
-| Lightening cutout enabled | Boolean | True | Uses current fixed cutout pattern. |
+| Lightening cutout enabled | Boolean | True | Enables wing rib lightening cutouts. |
+| Forward lightening cutout chord fraction | Double, 0-1 | 0.15 | Position along local chord. |
+| Forward lightening cutout preferred diameter | Double, mm | 22.0 | Generated exactly when validation passes. |
+| Middle lightening cutout chord fraction | Double, 0-1 | 0.50 | Position along local chord. |
+| Middle lightening cutout preferred diameter | Double, mm | 34.0 | Generated exactly when validation passes. |
+| Aft lightening cutout chord fraction | Double, 0-1 | 0.70 | Position along local chord. |
+| Aft lightening cutout preferred diameter | Double, mm | 20.0 | Generated exactly when validation passes. |
 | Aileron span fraction | Double, 0-1 | 0.40 | Fraction of semi-span, always starts at tip. |
 
 ### Tail Inputs
@@ -139,8 +147,7 @@ The following inputs are intentionally deferred because they introduce higher ge
 | Deferred input | Reason |
 | --- | --- |
 | Wing twist | Changes every station orientation and loft behavior. |
-| Wing dihedral | Changes station plane placement and spar path assumptions. |
-| Wing sweep | Changes planform, spar, aileron, and rib station assumptions. |
+| Forward or compound wing sweep | Changes station orientation and can invalidate current rib/aileron assumptions. |
 | Mixed airfoils along span | Requires loft compatibility and section matching rules. |
 | Arbitrary aileron start/end | Can collide with rib spacing, synthetic station logic, and split skins. |
 | Custom hinge gap | Can create invalid rear spar or aileron profiles. |
@@ -177,6 +184,8 @@ Validation should run before CATIA is opened or modified.
 
 - Full span must be within an agreed safe range.
 - Root chord must be greater than tip chord or equal to tip chord.
+- Sweep angle must be between `0` and `30` degrees.
+- Dihedral angle must be between `0` and `8` degrees.
 - Tip chord must be large enough to fit spar, cutouts, and aileron split regions.
 - Rib count per side must be at least 2.
 - Rib count per side should have a practical upper limit to avoid excessive CATIA runtime.
@@ -190,6 +199,8 @@ Suggested initial ranges:
 | Full span | 500 mm | 10000 mm |
 | Root chord | 50 mm | 2000 mm |
 | Tip chord | 50 mm | 2000 mm |
+| Sweep angle | 0 degrees | 30 degrees |
+| Dihedral angle | 0 degrees | 8 degrees |
 | Rib count per side | 2 | 80 |
 | Rib thickness | 0.5 mm | 20 mm |
 | Point count per surface | 15 | 121 |
@@ -204,6 +215,7 @@ These ranges can be tightened after testing.
 - `2 * wallThickness` must be less than outer diameter.
 - Inner diameter must be positive.
 - Rib cutout diameter must be greater than or equal to outer diameter plus clearance.
+- Rib cutout diameter must clear the combined sweep/dihedral spar projection at the selected planform angles.
 - Main spar must fit inside the thinnest relevant wing section with margin.
 - Main spar should not collide with the fixed aileron split region.
 
@@ -218,20 +230,21 @@ Suggested initial ranges:
 
 ### Wing Cutout Validation
 
-Plan A1 should keep the existing fixed lightening cutout pattern:
+The wing lightening cutout pattern is configurable:
 
 - Forward cutout at 15 percent chord.
 - Middle cutout at 50 percent chord.
 - Aft cutout at 70 percent chord.
 
-The user may enable or disable lightening cutouts, but should not set custom positions in Plan A1.
-
 Validation should ensure:
 
-- Generated cutout diameter is not smaller than minimum diameter.
-- Cutout does not break edge margin.
+- Chord fractions are finite and between `0.05` and `0.85`.
+- Forward, middle, and aft chord fractions remain in increasing order.
+- Preferred diameters are finite and between `1 mm` and `200 mm`.
+- Requested diameters fit the limiting tip rib while preserving the fixed internal `6 mm` airfoil-skin margin.
 - Cutout does not collide with spar clearance hole.
-- Cutout is omitted if it cannot fit safely.
+- Cutouts do not overlap each other at the wing tip.
+- Cutouts are generated at the exact requested diameter when validation passes.
 
 The current automatic shrink/omit behavior should be preserved.
 
@@ -328,7 +341,7 @@ Recommended initial UI groups:
 ## Implementation Order For Plan A2
 
 1. Add progress reporting interface.
-2. Add generation status messages by stage.
+2. Add generation status messages by step.
 3. Add progress bar UI.
 4. Add SQLite preset storage after the configuration schema is stable.
 5. Add named presets and last-used preset.
@@ -362,7 +375,7 @@ Control surfaces are more topology-sensitive, especially when span and station c
 Production hardening should include:
 
 - Clear error messages.
-- Logging around CATIA stage execution.
+- Logging around CATIA generation step execution.
 - Validation summaries.
 - Compatibility wrappers for default generation.
 - Separation of pure geometry math from CATIA COM calls.

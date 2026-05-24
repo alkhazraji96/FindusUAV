@@ -6,6 +6,10 @@ Friend Module WingConfigurationValidator
     Private Const WingFullSpanMaximum As Double = 10000.0
     Private Const WingChordMinimum As Double = 50.0
     Private Const WingChordMaximum As Double = 2000.0
+    Private Const WingSweepAngleDegreesMinimum As Double = 0.0
+    Private Const WingSweepAngleDegreesMaximum As Double = 30.0
+    Private Const WingDihedralAngleDegreesMinimum As Double = 0.0
+    Private Const WingDihedralAngleDegreesMaximum As Double = 8.0
     Private Const WingRibCountPerSideMinimum As Integer = 2
     Private Const WingRibCountPerSideMaximum As Integer = 80
     Private Const WingRibThicknessMinimum As Double = 0.5
@@ -21,6 +25,7 @@ Friend Module WingConfigurationValidator
     Private Const WingSparCutoutExtraClearanceMaximum As Double = 20.0
     Private Const WingAileronSpanFractionMinimum As Double = 0.15
     Private Const WingAileronSpanFractionMaximum As Double = 0.6
+    Private Const WingLighteningCutoutRequiredEdgeMargin As Double = 6.0
     Private Const ComparisonTolerance As Double = 0.000001
 
     Friend Function Validate(ByVal configuration As WingConfiguration) As ConfigurationValidationResult
@@ -46,12 +51,14 @@ Friend Module WingConfigurationValidator
         ValidateDoubleRange(result, "Wing.FullSpan", configuration.FullSpan, WingFullSpanMinimum, WingFullSpanMaximum, "mm")
         ValidateDoubleRange(result, "Wing.RootChord", configuration.RootChord, WingChordMinimum, WingChordMaximum, "mm")
         ValidateDoubleRange(result, "Wing.TipChord", configuration.TipChord, WingChordMinimum, WingChordMaximum, "mm")
+        ValidateDoubleRange(result, "Wing.SweepAngleDegrees", configuration.SweepAngleDegrees, WingSweepAngleDegreesMinimum, WingSweepAngleDegreesMaximum, "degrees")
+        ValidateDoubleRange(result, "Wing.DihedralAngleDegrees", configuration.DihedralAngleDegrees, WingDihedralAngleDegreesMinimum, WingDihedralAngleDegreesMaximum, "degrees")
         ValidateIntegerRange(result, "Wing.PointCountPerSurface", configuration.PointCountPerSurface, WingPointCountMinimum, WingPointCountMaximum)
 
         If IsFinite(configuration.RootChord) AndAlso
             IsFinite(configuration.TipChord) AndAlso
             configuration.RootChord < configuration.TipChord Then
-            result.AddError("Wing.RootChord", "Root chord must be greater than or equal to tip chord for the current straight leading-edge taper model.")
+            result.AddError("Wing.RootChord", "Root chord must be greater than or equal to tip chord for the current tapered wing model.")
         End If
     End Sub
 
@@ -91,8 +98,6 @@ Friend Module WingConfigurationValidator
 
         ValidateIntegerRange(result, "Wing.Ribs.CountPerSide", configuration.Ribs.CountPerSide, WingRibCountPerSideMinimum, WingRibCountPerSideMaximum)
         ValidateDoubleRange(result, "Wing.Ribs.Thickness", configuration.Ribs.Thickness, WingRibThicknessMinimum, WingRibThicknessMaximum, "mm")
-        ValidateDoubleRange(result, "Wing.Ribs.LighteningCutoutEdgeMargin", configuration.Ribs.LighteningCutoutEdgeMargin, 0.0, 100.0, "mm")
-        ValidateDoubleRange(result, "Wing.Ribs.LighteningCutoutMinimumDiameter", configuration.Ribs.LighteningCutoutMinimumDiameter, 0.0, 100.0, "mm")
 
         If IsFinite(configuration.FullSpan) AndAlso
             IsFinite(configuration.Ribs.Thickness) AndAlso
@@ -141,6 +146,7 @@ Friend Module WingConfigurationValidator
             result.AddError("Wing.MainSpar.RibCutoutDiameter", "Rib cutout diameter must be a finite number.")
         End If
 
+        ValidateSparCutoutFitsPlanformAngles(configuration, result)
         ValidateSparFitsTipAirfoil(configuration, result)
         ValidateSparFitsAileronForwardPanel(configuration, result)
     End Sub
@@ -156,6 +162,10 @@ Friend Module WingConfigurationValidator
             Return
         End If
 
+        configuration.Ribs.EnsureLighteningCutoutSlots()
+        ValidateLighteningCutoutOrder(configuration, result)
+        ValidateLighteningCutoutSpacing(configuration, result)
+
         For cutoutIndex As Integer = 0 To configuration.Ribs.LighteningCutouts.Count - 1
             Dim cutout As RibLighteningCutoutConfiguration = configuration.Ribs.LighteningCutouts(cutoutIndex)
             Dim fieldPrefix As String = "Wing.Ribs.LighteningCutouts[" & cutoutIndex.ToString(CultureInfo.InvariantCulture) & "]"
@@ -167,6 +177,7 @@ Friend Module WingConfigurationValidator
 
             ValidateDoubleRange(result, fieldPrefix & ".ChordFraction", cutout.ChordFraction, 0.05, 0.85, "")
             ValidateDoubleRange(result, fieldPrefix & ".PreferredDiameter", cutout.PreferredDiameter, 1.0, 200.0, "mm")
+            ValidateLighteningCutoutFitsTipAirfoil(configuration, cutout, fieldPrefix, result)
 
             If configuration.MainSpar IsNot Nothing AndAlso
                 IsFinite(cutout.ChordFraction) AndAlso
@@ -176,12 +187,84 @@ Friend Module WingConfigurationValidator
                 DoCutoutsOverlapAtTip(configuration, cutout) Then
                 result.AddError(fieldPrefix, "Lightening cutout overlaps the main spar cutout at the wing tip.")
             End If
+        Next
+    End Sub
 
-            Dim generatedDiameter As Double = GetGeneratedLighteningCutoutDiameterAtTip(configuration, cutout)
+    Private Sub ValidateLighteningCutoutOrder(ByVal configuration As WingConfiguration,
+                                              ByVal result As ConfigurationValidationResult)
+        Dim forwardCutout As RibLighteningCutoutConfiguration =
+            configuration.Ribs.GetForwardLighteningCutout()
+        Dim middleCutout As RibLighteningCutoutConfiguration =
+            configuration.Ribs.GetMiddleLighteningCutout()
+        Dim aftCutout As RibLighteningCutoutConfiguration =
+            configuration.Ribs.GetAftLighteningCutout()
 
-            If IsFinite(generatedDiameter) AndAlso generatedDiameter <= 0.0 Then
-                result.AddWarning(fieldPrefix, "This lightening cutout will be omitted at the wing tip because it cannot preserve the configured edge margin.")
+        If Not IsFinite(forwardCutout.ChordFraction) OrElse
+            Not IsFinite(middleCutout.ChordFraction) OrElse
+            Not IsFinite(aftCutout.ChordFraction) Then
+            Return
+        End If
+
+        If forwardCutout.ChordFraction >= middleCutout.ChordFraction Then
+            result.AddError("Wing.Ribs.LighteningCutouts[0].ChordFraction",
+                            "Forward lightening cutout chord fraction must be less than the middle lightening cutout chord fraction.")
+        End If
+
+        If middleCutout.ChordFraction >= aftCutout.ChordFraction Then
+            result.AddError("Wing.Ribs.LighteningCutouts[1].ChordFraction",
+                            "Middle lightening cutout chord fraction must be less than the aft lightening cutout chord fraction.")
+        End If
+    End Sub
+
+    Private Sub ValidateLighteningCutoutSpacing(ByVal configuration As WingConfiguration,
+                                                ByVal result As ConfigurationValidationResult)
+        If Not IsFinite(configuration.TipChord) Then
+            Return
+        End If
+
+        Dim cutouts As List(Of RibLighteningCutoutConfiguration) = configuration.Ribs.LighteningCutouts
+
+        For firstIndex As Integer = 0 To cutouts.Count - 2
+            Dim firstCutout As RibLighteningCutoutConfiguration = cutouts(firstIndex)
+
+            If firstCutout Is Nothing Then
+                Continue For
             End If
+
+            If Not IsFinite(firstCutout.ChordFraction) OrElse
+                Not IsFinite(firstCutout.PreferredDiameter) OrElse
+                firstCutout.PreferredDiameter <= 0.0 Then
+                Continue For
+            End If
+
+            Dim firstDiameter As Double = firstCutout.PreferredDiameter
+
+            For secondIndex As Integer = firstIndex + 1 To cutouts.Count - 1
+                Dim secondCutout As RibLighteningCutoutConfiguration = cutouts(secondIndex)
+
+                If secondCutout Is Nothing Then
+                    Continue For
+                End If
+
+                If Not IsFinite(secondCutout.ChordFraction) OrElse
+                    Not IsFinite(secondCutout.PreferredDiameter) OrElse
+                    secondCutout.PreferredDiameter <= 0.0 Then
+                    Continue For
+                End If
+
+                Dim secondDiameter As Double = secondCutout.PreferredDiameter
+
+                Dim firstCenterX As Double = configuration.TipChord * firstCutout.ChordFraction
+                Dim secondCenterX As Double = configuration.TipChord * secondCutout.ChordFraction
+                Dim centerDistance As Double = Math.Abs(firstCenterX - secondCenterX)
+                Dim requiredDistance As Double = (firstDiameter / 2.0) + (secondDiameter / 2.0)
+
+                If centerDistance <= requiredDistance Then
+                    result.AddError("Wing.Ribs.LighteningCutouts[" & firstIndex.ToString(CultureInfo.InvariantCulture) & "]",
+                                    "Lightening cutouts overlap each other at the wing tip.")
+                    Return
+                End If
+            Next
         Next
     End Sub
 
@@ -238,6 +321,33 @@ Friend Module WingConfigurationValidator
         End If
     End Sub
 
+    Private Sub ValidateSparCutoutFitsPlanformAngles(ByVal configuration As WingConfiguration,
+                                                     ByVal result As ConfigurationValidationResult)
+        If configuration.MainSpar Is Nothing Then
+            Return
+        End If
+
+        If Not IsFinite(configuration.SweepAngleDegrees) OrElse
+            Not IsFinite(configuration.DihedralAngleDegrees) OrElse
+            Not IsFinite(configuration.MainSpar.OuterDiameter) OrElse
+            Not IsFinite(configuration.MainSpar.RibCutoutDiameter) Then
+            Return
+        End If
+
+        Dim sweepTangent As Double = Math.Tan(configuration.SweepAngleDegrees * Math.PI / 180.0)
+        Dim dihedralTangent As Double = Math.Tan(configuration.DihedralAngleDegrees * Math.PI / 180.0)
+        Dim projectedSparDiameter As Double =
+            configuration.MainSpar.OuterDiameter *
+            Math.Sqrt(1.0 + (sweepTangent * sweepTangent) + (dihedralTangent * dihedralTangent))
+
+        If configuration.MainSpar.RibCutoutDiameter < (projectedSparDiameter - ComparisonTolerance) Then
+            result.AddError("Wing.MainSpar.RibCutoutDiameter",
+                            "Rib cutout diameter must be at least " &
+                            FormatNumber(projectedSparDiameter) &
+                            " mm to clear the swept/dihedral main spar at the selected planform angles.")
+        End If
+    End Sub
+
     Private Sub ValidateSparFitsAileronForwardPanel(ByVal configuration As WingConfiguration,
                                                     ByVal result As ConfigurationValidationResult)
         If configuration.MainSpar Is Nothing Then
@@ -284,32 +394,53 @@ Friend Module WingConfigurationValidator
         Return centerDistance <= requiredDistance
     End Function
 
-    Private Function GetGeneratedLighteningCutoutDiameterAtTip(ByVal configuration As WingConfiguration,
+    Private Sub ValidateLighteningCutoutFitsTipAirfoil(ByVal configuration As WingConfiguration,
+                                                       ByVal cutout As RibLighteningCutoutConfiguration,
+                                                       ByVal fieldPrefix As String,
+                                                       ByVal result As ConfigurationValidationResult)
+        Dim availableDiameter As Double = GetAvailableLighteningCutoutDiameterAtTip(configuration, cutout)
+
+        If Not IsFinite(availableDiameter) Then
+            Return
+        End If
+
+        If availableDiameter <= ComparisonTolerance Then
+            result.AddError(fieldPrefix & ".ChordFraction",
+                            "No lightening cutout can fit at the wing tip at this chord fraction while keeping " &
+                            FormatNumber(WingLighteningCutoutRequiredEdgeMargin) &
+                            " mm of rib material above and below the hole.")
+            Return
+        End If
+
+        If IsFinite(cutout.PreferredDiameter) AndAlso
+            cutout.PreferredDiameter > (availableDiameter + ComparisonTolerance) Then
+            result.AddError(fieldPrefix & ".PreferredDiameter",
+                            "Diameter is too large for the wing tip at this chord fraction. Maximum safe exact diameter is " &
+                            FormatNumber(availableDiameter) &
+                            " mm with " &
+                            FormatNumber(WingLighteningCutoutRequiredEdgeMargin) &
+                            " mm of rib material above and below the hole.")
+        End If
+    End Sub
+
+    Private Function GetAvailableLighteningCutoutDiameterAtTip(ByVal configuration As WingConfiguration,
                                                                ByVal cutout As RibLighteningCutoutConfiguration) As Double
         If configuration.Airfoil Is Nothing OrElse configuration.Ribs Is Nothing OrElse cutout Is Nothing Then
-            Return 0.0
+            Return Double.NaN
         End If
 
         If Not IsFinite(configuration.TipChord) OrElse
             Not IsFinite(cutout.ChordFraction) OrElse
-            Not IsFinite(cutout.PreferredDiameter) OrElse
-            Not IsFinite(configuration.Ribs.LighteningCutoutEdgeMargin) OrElse
-            Not IsFinite(configuration.Ribs.LighteningCutoutMinimumDiameter) Then
-            Return 0.0
+            cutout.ChordFraction <= 0.0 OrElse
+            cutout.ChordFraction >= 1.0 Then
+            Return Double.NaN
         End If
 
         Dim airfoilHalfThickness As Double =
             GetAirfoilHalfThicknessAtChordFraction(configuration.Airfoil,
                                                    cutout.ChordFraction,
                                                    configuration.TipChord)
-        Dim availableDiameter As Double =
-            (2.0 * airfoilHalfThickness) - (2.0 * configuration.Ribs.LighteningCutoutEdgeMargin)
-
-        If availableDiameter < configuration.Ribs.LighteningCutoutMinimumDiameter Then
-            Return 0.0
-        End If
-
-        Return Math.Min(cutout.PreferredDiameter, availableDiameter)
+        Return (2.0 * airfoilHalfThickness) - (2.0 * WingLighteningCutoutRequiredEdgeMargin)
     End Function
 
     Private Function GetAirfoilHalfThicknessAtChordFraction(ByVal airfoil As AirfoilConfiguration,

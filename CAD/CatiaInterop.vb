@@ -1,6 +1,8 @@
 Imports System.Runtime.InteropServices
 
 Friend Module CatiaInterop
+    Private Const CatVisPropertyNoShow As Integer = 1
+
     Friend Function GetOrCreateCatiaApplication() As Object
         Try
             Return Marshal.GetActiveObject("CATIA.Application")
@@ -132,6 +134,82 @@ Friend Module CatiaInterop
         Catch
         End Try
     End Sub
+
+    Friend Sub TryHideObject(ByVal partDocument As Object,
+                             ByVal catiaObject As Object)
+        TrySetObjectShowState(partDocument, catiaObject, CatVisPropertyNoShow)
+    End Sub
+
+    Friend Sub TryHideSketchesInBodies(ByVal partDocument As Object,
+                                       ByVal part As Object)
+        Try
+            Dim bodies As Object = part.Bodies
+
+            For bodyIndex As Integer = 1 To CInt(bodies.Count)
+                TryHideSketchesInBody(partDocument, bodies.Item(bodyIndex))
+            Next
+        Catch
+        End Try
+    End Sub
+
+    Friend Sub TryHideHybridShapesByNameEnding(ByVal partDocument As Object,
+                                               ByVal hybridBody As Object,
+                                               ByVal nameSuffix As String)
+        If String.IsNullOrWhiteSpace(nameSuffix) Then
+            Return
+        End If
+
+        Try
+            Dim hybridShapes As Object = hybridBody.HybridShapes
+
+            For shapeIndex As Integer = 1 To CInt(hybridShapes.Count)
+                Dim hybridShape As Object = hybridShapes.Item(shapeIndex)
+                Dim hybridShapeName As String = TryGetCatiaObjectName(hybridShape)
+
+                If hybridShapeName.EndsWith(nameSuffix, StringComparison.OrdinalIgnoreCase) Then
+                    TryHideObject(partDocument, hybridShape)
+                End If
+            Next
+        Catch
+        End Try
+    End Sub
+
+    Private Sub TrySetObjectShowState(ByVal partDocument As Object,
+                                      ByVal catiaObject As Object,
+                                      ByVal showState As Integer)
+        If partDocument Is Nothing OrElse catiaObject Is Nothing Then
+            Return
+        End If
+
+        Try
+            Dim selection As Object = partDocument.Selection
+            selection.Clear()
+            selection.Add(catiaObject)
+            selection.VisProperties.SetShow(showState)
+            selection.Clear()
+        Catch
+        End Try
+    End Sub
+
+    Private Sub TryHideSketchesInBody(ByVal partDocument As Object,
+                                      ByVal body As Object)
+        Try
+            Dim sketches As Object = body.Sketches
+
+            For sketchIndex As Integer = 1 To CInt(sketches.Count)
+                TryHideObject(partDocument, sketches.Item(sketchIndex))
+            Next
+        Catch
+        End Try
+    End Sub
+
+    Private Function TryGetCatiaObjectName(ByVal catiaObject As Object) As String
+        Try
+            Return CStr(catiaObject.Name)
+        Catch
+            Return String.Empty
+        End Try
+    End Function
 
     Friend Sub RequireCenteredPad(ByVal pad As Object,
                                   ByVal thickness As Double,

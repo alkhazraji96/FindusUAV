@@ -12,7 +12,7 @@ End Interface
 Friend NotInheritable Class GenerationProgressUpdate
     Public ReadOnly Property Phase As GenerationProgressPhase
     Public ReadOnly Property OperationName As String
-    Public ReadOnly Property StageName As String
+    Public ReadOnly Property StepName As String
     Public ReadOnly Property Message As String
     Public ReadOnly Property CurrentStep As Integer
     Public ReadOnly Property TotalSteps As Integer
@@ -21,7 +21,7 @@ Friend NotInheritable Class GenerationProgressUpdate
 
     Private Sub New(ByVal phase As GenerationProgressPhase,
                     ByVal operationName As String,
-                    ByVal stageName As String,
+                    ByVal stepName As String,
                     ByVal message As String,
                     ByVal currentStep As Integer,
                     ByVal totalSteps As Integer,
@@ -29,7 +29,7 @@ Friend NotInheritable Class GenerationProgressUpdate
                     ByVal isIndeterminate As Boolean)
         Me.Phase = phase
         Me.OperationName = If(operationName, String.Empty)
-        Me.StageName = If(stageName, String.Empty)
+        Me.StepName = If(stepName, String.Empty)
         Me.Message = If(message, String.Empty)
         Me.CurrentStep = Math.Max(0, currentStep)
         Me.TotalSteps = Math.Max(0, totalSteps)
@@ -50,7 +50,7 @@ Friend NotInheritable Class GenerationProgressUpdate
     End Function
 
     Public Shared Function CreateStep(ByVal operationName As String,
-                                      ByVal stageName As String,
+                                      ByVal stepName As String,
                                       ByVal message As String,
                                       ByVal currentStep As Integer,
                                       ByVal totalSteps As Integer) As GenerationProgressUpdate
@@ -65,7 +65,7 @@ Friend NotInheritable Class GenerationProgressUpdate
 
         Return New GenerationProgressUpdate(GenerationProgressPhase.Running,
                                             operationName,
-                                            stageName,
+                                            stepName,
                                             message,
                                             safeCurrentStep,
                                             safeTotalSteps,
@@ -74,11 +74,11 @@ Friend NotInheritable Class GenerationProgressUpdate
     End Function
 
     Public Shared Function CreateIndeterminate(ByVal operationName As String,
-                                               ByVal stageName As String,
+                                               ByVal stepName As String,
                                                ByVal message As String) As GenerationProgressUpdate
         Return New GenerationProgressUpdate(GenerationProgressPhase.Running,
                                             operationName,
-                                            stageName,
+                                            stepName,
                                             message,
                                             0,
                                             0,
@@ -113,11 +113,11 @@ Friend NotInheritable Class GenerationProgressUpdate
     Public Overrides Function ToString() As String
         Dim prefix As String = OperationName
 
-        If Not String.IsNullOrWhiteSpace(StageName) Then
+        If Not String.IsNullOrWhiteSpace(StepName) Then
             If String.IsNullOrWhiteSpace(prefix) Then
-                prefix = StageName
+                prefix = StepName
             Else
-                prefix &= " - " & StageName
+                prefix &= " - " & StepName
             End If
         End If
 

@@ -55,6 +55,8 @@ Friend Class WingConfiguration
     Public Property FullSpan As Double
     Public Property RootChord As Double
     Public Property TipChord As Double
+    Public Property SweepAngleDegrees As Double
+    Public Property DihedralAngleDegrees As Double
     Public Property Airfoil As AirfoilConfiguration
     Public Property PointCountPerSurface As Integer
     Public Property Ribs As WingRibConfiguration
@@ -65,6 +67,8 @@ Friend Class WingConfiguration
         FullSpan = 3543.65
         RootChord = 586.0
         TipChord = 374.0
+        SweepAngleDegrees = 0.0
+        DihedralAngleDegrees = 0.0
         Airfoil = AirfoilConfiguration.CreateNaca4415()
         PointCountPerSurface = 41
         Ribs = WingRibConfiguration.CreateDefault()
@@ -138,25 +142,59 @@ Friend Class WingConfiguration
 End Class
 
 Friend Class WingRibConfiguration
+    Private Const ForwardLighteningCutoutIndex As Integer = 0
+    Private Const MiddleLighteningCutoutIndex As Integer = 1
+    Private Const AftLighteningCutoutIndex As Integer = 2
+
     Public Property CountPerSide As Integer
     Public Property Thickness As Double
     Public Property LighteningCutoutsEnabled As Boolean
-    Public Property LighteningCutoutEdgeMargin As Double
-    Public Property LighteningCutoutMinimumDiameter As Double
     Public Property LighteningCutouts As List(Of RibLighteningCutoutConfiguration)
 
     Public Sub New()
         CountPerSide = 14
         Thickness = 3.0
         LighteningCutoutsEnabled = True
-        LighteningCutoutEdgeMargin = 6.0
-        LighteningCutoutMinimumDiameter = 8.0
         LighteningCutouts = RibLighteningCutoutConfiguration.CreateDefaultWingCutouts()
     End Sub
 
     Public Shared Function CreateDefault() As WingRibConfiguration
         Return New WingRibConfiguration()
     End Function
+
+    Public Function GetForwardLighteningCutout() As RibLighteningCutoutConfiguration
+        Return GetLighteningCutout(ForwardLighteningCutoutIndex)
+    End Function
+
+    Public Function GetMiddleLighteningCutout() As RibLighteningCutoutConfiguration
+        Return GetLighteningCutout(MiddleLighteningCutoutIndex)
+    End Function
+
+    Public Function GetAftLighteningCutout() As RibLighteningCutoutConfiguration
+        Return GetLighteningCutout(AftLighteningCutoutIndex)
+    End Function
+
+    Public Function GetLighteningCutout(ByVal cutoutIndex As Integer) As RibLighteningCutoutConfiguration
+        EnsureLighteningCutoutSlots()
+        Return LighteningCutouts(cutoutIndex)
+    End Function
+
+    Public Sub EnsureLighteningCutoutSlots()
+        Dim defaultCutouts As List(Of RibLighteningCutoutConfiguration) =
+            RibLighteningCutoutConfiguration.CreateDefaultWingCutouts()
+
+        If LighteningCutouts Is Nothing Then
+            LighteningCutouts = New List(Of RibLighteningCutoutConfiguration)()
+        End If
+
+        For cutoutIndex As Integer = 0 To defaultCutouts.Count - 1
+            If LighteningCutouts.Count <= cutoutIndex Then
+                LighteningCutouts.Add(defaultCutouts(cutoutIndex))
+            ElseIf LighteningCutouts(cutoutIndex) Is Nothing Then
+                LighteningCutouts(cutoutIndex) = defaultCutouts(cutoutIndex)
+            End If
+        Next
+    End Sub
 End Class
 
 Friend Class WingSparConfiguration
@@ -200,7 +238,7 @@ Friend Class RibLighteningCutoutConfiguration
         Return New List(Of RibLighteningCutoutConfiguration) From {
             New RibLighteningCutoutConfiguration("Forward lightening cutout", 0.15, 22.0),
             New RibLighteningCutoutConfiguration("Middle lightening cutout", 0.5, 34.0),
-            New RibLighteningCutoutConfiguration("Aft lightening cutout", 0.7, 22.0)
+            New RibLighteningCutoutConfiguration("Aft lightening cutout", 0.7, 20.0)
         }
     End Function
 End Class

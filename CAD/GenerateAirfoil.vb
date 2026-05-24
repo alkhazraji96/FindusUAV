@@ -9,61 +9,61 @@ Public Class GenerateAirfoil
 
     Friend Shared Sub Run(ByVal configuration As WingConfiguration,
                           Optional ByVal progressReporter As IGenerationProgressReporter = Nothing)
-        WingGenerator.CreateStage4CPhysicalRibsMainSparAndAilerons(configuration, progressReporter)
+        WingGenerator.CreatePhysicalRibsMainSparAndAilerons(configuration, progressReporter)
     End Sub
 
-    Public Shared Function CreateWingStage1Planform() As Object
-        Return CreateWingStage1Planform(WingConfiguration.CreateDefault())
+    Public Shared Function CreateWingPlanform() As Object
+        Return CreateWingPlanform(WingConfiguration.CreateDefault())
     End Function
 
-    Friend Shared Function CreateWingStage1Planform(ByVal configuration As WingConfiguration,
-                                                    Optional ByVal progressReporter As IGenerationProgressReporter = Nothing) As Object
-        Return WingGenerator.CreateStage1Planform(configuration, progressReporter)
+    Friend Shared Function CreateWingPlanform(ByVal configuration As WingConfiguration,
+                                              Optional ByVal progressReporter As IGenerationProgressReporter = Nothing) As Object
+        Return WingGenerator.CreatePlanform(configuration, progressReporter)
     End Function
 
-    Public Shared Function CreateWingStage2AirfoilStations() As Object
-        Return CreateWingStage2AirfoilStations(WingConfiguration.CreateDefault())
+    Public Shared Function CreateWingAirfoilStations() As Object
+        Return CreateWingAirfoilStations(WingConfiguration.CreateDefault())
     End Function
 
-    Friend Shared Function CreateWingStage2AirfoilStations(ByVal configuration As WingConfiguration,
-                                                           Optional ByVal progressReporter As IGenerationProgressReporter = Nothing) As Object
-        Return WingGenerator.CreateStage2AirfoilStations(configuration, progressReporter)
+    Friend Shared Function CreateWingAirfoilStations(ByVal configuration As WingConfiguration,
+                                                     Optional ByVal progressReporter As IGenerationProgressReporter = Nothing) As Object
+        Return WingGenerator.CreateAirfoilStations(configuration, progressReporter)
     End Function
 
-    Public Shared Function CreateWingStage3OuterWingSkin() As Object
-        Return CreateWingStage3OuterWingSkin(WingConfiguration.CreateDefault())
+    Public Shared Function CreateWingOuterWingSkin() As Object
+        Return CreateWingOuterWingSkin(WingConfiguration.CreateDefault())
     End Function
 
-    Friend Shared Function CreateWingStage3OuterWingSkin(ByVal configuration As WingConfiguration,
-                                                         Optional ByVal progressReporter As IGenerationProgressReporter = Nothing) As Object
-        Return WingGenerator.CreateStage3OuterWingSkin(configuration, progressReporter)
+    Friend Shared Function CreateWingOuterWingSkin(ByVal configuration As WingConfiguration,
+                                                   Optional ByVal progressReporter As IGenerationProgressReporter = Nothing) As Object
+        Return WingGenerator.CreateOuterWingSkin(configuration, progressReporter)
     End Function
 
-    Public Shared Function CreateWingStage4APhysicalRibs() As Object
-        Return CreateWingStage4APhysicalRibs(WingConfiguration.CreateDefault())
+    Public Shared Function CreateWingPhysicalRibs() As Object
+        Return CreateWingPhysicalRibs(WingConfiguration.CreateDefault())
     End Function
 
-    Friend Shared Function CreateWingStage4APhysicalRibs(ByVal configuration As WingConfiguration,
-                                                         Optional ByVal progressReporter As IGenerationProgressReporter = Nothing) As Object
-        Return WingGenerator.CreateStage4APhysicalRibs(configuration, progressReporter)
+    Friend Shared Function CreateWingPhysicalRibs(ByVal configuration As WingConfiguration,
+                                                  Optional ByVal progressReporter As IGenerationProgressReporter = Nothing) As Object
+        Return WingGenerator.CreatePhysicalRibs(configuration, progressReporter)
     End Function
 
-    Public Shared Function CreateWingStage4BPhysicalRibsAndMainSpar() As Object
-        Return CreateWingStage4BPhysicalRibsAndMainSpar(WingConfiguration.CreateDefault())
+    Public Shared Function CreateWingPhysicalRibsAndMainSpar() As Object
+        Return CreateWingPhysicalRibsAndMainSpar(WingConfiguration.CreateDefault())
     End Function
 
-    Friend Shared Function CreateWingStage4BPhysicalRibsAndMainSpar(ByVal configuration As WingConfiguration,
-                                                                    Optional ByVal progressReporter As IGenerationProgressReporter = Nothing) As Object
-        Return WingGenerator.CreateStage4BPhysicalRibsAndMainSpar(configuration, progressReporter)
+    Friend Shared Function CreateWingPhysicalRibsAndMainSpar(ByVal configuration As WingConfiguration,
+                                                             Optional ByVal progressReporter As IGenerationProgressReporter = Nothing) As Object
+        Return WingGenerator.CreatePhysicalRibsAndMainSpar(configuration, progressReporter)
     End Function
 
-    Public Shared Function CreateWingStage4CPhysicalRibsMainSparAndAilerons() As Object
-        Return CreateWingStage4CPhysicalRibsMainSparAndAilerons(WingConfiguration.CreateDefault())
+    Public Shared Function CreateWingPhysicalRibsMainSparAndAilerons() As Object
+        Return CreateWingPhysicalRibsMainSparAndAilerons(WingConfiguration.CreateDefault())
     End Function
 
-    Friend Shared Function CreateWingStage4CPhysicalRibsMainSparAndAilerons(ByVal configuration As WingConfiguration,
-                                                                            Optional ByVal progressReporter As IGenerationProgressReporter = Nothing) As Object
-        Return WingGenerator.CreateStage4CPhysicalRibsMainSparAndAilerons(configuration, progressReporter)
+    Friend Shared Function CreateWingPhysicalRibsMainSparAndAilerons(ByVal configuration As WingConfiguration,
+                                                                     Optional ByVal progressReporter As IGenerationProgressReporter = Nothing) As Object
+        Return WingGenerator.CreatePhysicalRibsMainSparAndAilerons(configuration, progressReporter)
     End Function
 
     Public Shared Function CreateNaca2412Part(Optional ByVal chordLength As Double = 100.0,
