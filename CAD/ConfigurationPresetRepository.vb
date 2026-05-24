@@ -3,7 +3,7 @@ Imports System.Globalization
 Imports System.IO
 
 Friend NotInheritable Class ConfigurationPresetRepository
-    Private Const SchemaVersion As Integer = 1
+    Private Const SchemaVersion As Integer = 4
     Friend Const LastUsedPresetName As String = "Last Used"
     Private Const MaximumPresetNameLength As Integer = 64
 
@@ -258,8 +258,57 @@ Friend NotInheritable Class ConfigurationPresetRepository
             Using command As New SQLiteCommand(BuildCreateSchemaSql(), connection)
                 command.ExecuteNonQuery()
             End Using
+
+            EnsureSchemaVersion(connection)
         End Using
     End Sub
+
+    Private Shared Sub EnsureSchemaVersion(ByVal connection As SQLiteConnection)
+        EnsureColumnExists(connection, "wing_sweep_angle_degrees", "REAL NOT NULL DEFAULT 0")
+        EnsureColumnExists(connection, "wing_dihedral_angle_degrees", "REAL NOT NULL DEFAULT 0")
+        EnsureColumnExists(connection, "wing_forward_lightening_cutout_chord_fraction", "REAL NOT NULL DEFAULT 0.15")
+        EnsureColumnExists(connection, "wing_forward_lightening_cutout_preferred_diameter", "REAL NOT NULL DEFAULT 22")
+        EnsureColumnExists(connection, "wing_middle_lightening_cutout_chord_fraction", "REAL NOT NULL DEFAULT 0.5")
+        EnsureColumnExists(connection, "wing_middle_lightening_cutout_preferred_diameter", "REAL NOT NULL DEFAULT 34")
+        EnsureColumnExists(connection, "wing_aft_lightening_cutout_chord_fraction", "REAL NOT NULL DEFAULT 0.7")
+        EnsureColumnExists(connection, "wing_aft_lightening_cutout_preferred_diameter", "REAL NOT NULL DEFAULT 20")
+
+        Using command As New SQLiteCommand("UPDATE configuration_presets SET schema_version = @schema_version WHERE schema_version < @schema_version;", connection)
+            AddParameter(command, "@schema_version", SchemaVersion)
+            command.ExecuteNonQuery()
+        End Using
+    End Sub
+
+    Private Shared Sub EnsureColumnExists(ByVal connection As SQLiteConnection,
+                                          ByVal columnName As String,
+                                          ByVal columnDefinition As String)
+        If DoesColumnExist(connection, columnName) Then
+            Return
+        End If
+
+        Using command As New SQLiteCommand("ALTER TABLE configuration_presets ADD COLUMN " &
+                                           columnName & " " & columnDefinition & ";",
+                                           connection)
+            command.ExecuteNonQuery()
+        End Using
+    End Sub
+
+    Private Shared Function DoesColumnExist(ByVal connection As SQLiteConnection,
+                                            ByVal columnName As String) As Boolean
+        Using command As New SQLiteCommand("PRAGMA table_info(configuration_presets);", connection)
+            Using reader As SQLiteDataReader = command.ExecuteReader()
+                While reader.Read()
+                    If String.Equals(ReadString(reader, "name"),
+                                     columnName,
+                                     StringComparison.OrdinalIgnoreCase) Then
+                        Return True
+                    End If
+                End While
+            End Using
+        End Using
+
+        Return False
+    End Function
 
     Private Function OpenConnection() As SQLiteConnection
         Dim connectionString As New SQLiteConnectionStringBuilder()
@@ -281,11 +330,19 @@ Friend NotInheritable Class ConfigurationPresetRepository
                "wing_full_span REAL NOT NULL, " &
                "wing_root_chord REAL NOT NULL, " &
                "wing_tip_chord REAL NOT NULL, " &
+               "wing_sweep_angle_degrees REAL NOT NULL DEFAULT 0, " &
+               "wing_dihedral_angle_degrees REAL NOT NULL DEFAULT 0, " &
                "wing_airfoil TEXT NOT NULL, " &
                "wing_point_count_per_surface INTEGER NOT NULL, " &
                "wing_rib_count_per_side INTEGER NOT NULL, " &
                "wing_rib_thickness REAL NOT NULL, " &
                "wing_lightening_cutouts_enabled INTEGER NOT NULL, " &
+               "wing_forward_lightening_cutout_chord_fraction REAL NOT NULL DEFAULT 0.15, " &
+               "wing_forward_lightening_cutout_preferred_diameter REAL NOT NULL DEFAULT 22, " &
+               "wing_middle_lightening_cutout_chord_fraction REAL NOT NULL DEFAULT 0.5, " &
+               "wing_middle_lightening_cutout_preferred_diameter REAL NOT NULL DEFAULT 34, " &
+               "wing_aft_lightening_cutout_chord_fraction REAL NOT NULL DEFAULT 0.7, " &
+               "wing_aft_lightening_cutout_preferred_diameter REAL NOT NULL DEFAULT 20, " &
                "wing_main_spar_chord_fraction REAL NOT NULL, " &
                "wing_main_spar_outer_diameter REAL NOT NULL, " &
                "wing_main_spar_wall_thickness REAL NOT NULL, " &
@@ -339,9 +396,13 @@ Friend NotInheritable Class ConfigurationPresetRepository
     Private Shared Function BuildSavePresetSql() As String
         Return "INSERT OR REPLACE INTO configuration_presets (" &
                "preset_name, schema_version, is_last_used, created_utc, updated_utc, " &
-               "wing_full_span, wing_root_chord, wing_tip_chord, wing_airfoil, " &
+               "wing_full_span, wing_root_chord, wing_tip_chord, wing_sweep_angle_degrees, " &
+               "wing_dihedral_angle_degrees, wing_airfoil, " &
                "wing_point_count_per_surface, wing_rib_count_per_side, wing_rib_thickness, " &
-               "wing_lightening_cutouts_enabled, wing_main_spar_chord_fraction, " &
+               "wing_lightening_cutouts_enabled, wing_forward_lightening_cutout_chord_fraction, " &
+               "wing_forward_lightening_cutout_preferred_diameter, wing_middle_lightening_cutout_chord_fraction, " &
+               "wing_middle_lightening_cutout_preferred_diameter, wing_aft_lightening_cutout_chord_fraction, " &
+               "wing_aft_lightening_cutout_preferred_diameter, wing_main_spar_chord_fraction, " &
                "wing_main_spar_outer_diameter, wing_main_spar_wall_thickness, " &
                "wing_main_spar_rib_cutout_diameter, wing_aileron_span_fraction, " &
                "tail_distance_offset, tail_point_count_per_surface, tail_rib_thickness, " &
@@ -351,9 +412,13 @@ Friend NotInheritable Class ConfigurationPresetRepository
                "vertical_tail_rib_count, vertical_tail_airfoil" &
                ") VALUES (" &
                "@preset_name, @schema_version, @is_last_used, @created_utc, @updated_utc, " &
-               "@wing_full_span, @wing_root_chord, @wing_tip_chord, @wing_airfoil, " &
+               "@wing_full_span, @wing_root_chord, @wing_tip_chord, @wing_sweep_angle_degrees, " &
+               "@wing_dihedral_angle_degrees, @wing_airfoil, " &
                "@wing_point_count_per_surface, @wing_rib_count_per_side, @wing_rib_thickness, " &
-               "@wing_lightening_cutouts_enabled, @wing_main_spar_chord_fraction, " &
+               "@wing_lightening_cutouts_enabled, @wing_forward_lightening_cutout_chord_fraction, " &
+               "@wing_forward_lightening_cutout_preferred_diameter, @wing_middle_lightening_cutout_chord_fraction, " &
+               "@wing_middle_lightening_cutout_preferred_diameter, @wing_aft_lightening_cutout_chord_fraction, " &
+               "@wing_aft_lightening_cutout_preferred_diameter, @wing_main_spar_chord_fraction, " &
                "@wing_main_spar_outer_diameter, @wing_main_spar_wall_thickness, " &
                "@wing_main_spar_rib_cutout_diameter, @wing_aileron_span_fraction, " &
                "@tail_distance_offset, @tail_point_count_per_surface, @tail_rib_thickness, " &
@@ -372,11 +437,20 @@ Friend NotInheritable Class ConfigurationPresetRepository
         wing.FullSpan = ReadDouble(reader, "wing_full_span")
         wing.RootChord = ReadDouble(reader, "wing_root_chord")
         wing.TipChord = ReadDouble(reader, "wing_tip_chord")
+        wing.SweepAngleDegrees = ReadDouble(reader, "wing_sweep_angle_degrees")
+        wing.DihedralAngleDegrees = ReadDouble(reader, "wing_dihedral_angle_degrees")
         wing.Airfoil = AirfoilConfiguration.FromNacaCode(ReadString(reader, "wing_airfoil"))
         wing.PointCountPerSurface = ReadInteger(reader, "wing_point_count_per_surface")
         wing.Ribs.CountPerSide = ReadInteger(reader, "wing_rib_count_per_side")
         wing.Ribs.Thickness = ReadDouble(reader, "wing_rib_thickness")
         wing.Ribs.LighteningCutoutsEnabled = ReadBoolean(reader, "wing_lightening_cutouts_enabled")
+        wing.Ribs.EnsureLighteningCutoutSlots()
+        wing.Ribs.GetForwardLighteningCutout().ChordFraction = ReadDouble(reader, "wing_forward_lightening_cutout_chord_fraction")
+        wing.Ribs.GetForwardLighteningCutout().PreferredDiameter = ReadDouble(reader, "wing_forward_lightening_cutout_preferred_diameter")
+        wing.Ribs.GetMiddleLighteningCutout().ChordFraction = ReadDouble(reader, "wing_middle_lightening_cutout_chord_fraction")
+        wing.Ribs.GetMiddleLighteningCutout().PreferredDiameter = ReadDouble(reader, "wing_middle_lightening_cutout_preferred_diameter")
+        wing.Ribs.GetAftLighteningCutout().ChordFraction = ReadDouble(reader, "wing_aft_lightening_cutout_chord_fraction")
+        wing.Ribs.GetAftLighteningCutout().PreferredDiameter = ReadDouble(reader, "wing_aft_lightening_cutout_preferred_diameter")
         wing.MainSpar.ChordFraction = ReadDouble(reader, "wing_main_spar_chord_fraction")
         wing.MainSpar.OuterDiameter = ReadDouble(reader, "wing_main_spar_outer_diameter")
         wing.MainSpar.WallThickness = ReadDouble(reader, "wing_main_spar_wall_thickness")
@@ -465,11 +539,20 @@ Friend NotInheritable Class ConfigurationPresetRepository
             AddParameter(command, "@wing_full_span", wing.FullSpan)
             AddParameter(command, "@wing_root_chord", wing.RootChord)
             AddParameter(command, "@wing_tip_chord", wing.TipChord)
+            AddParameter(command, "@wing_sweep_angle_degrees", wing.SweepAngleDegrees)
+            AddParameter(command, "@wing_dihedral_angle_degrees", wing.DihedralAngleDegrees)
             AddParameter(command, "@wing_airfoil", wing.Airfoil.NacaCode)
             AddParameter(command, "@wing_point_count_per_surface", wing.PointCountPerSurface)
             AddParameter(command, "@wing_rib_count_per_side", wing.Ribs.CountPerSide)
             AddParameter(command, "@wing_rib_thickness", wing.Ribs.Thickness)
             AddParameter(command, "@wing_lightening_cutouts_enabled", If(wing.Ribs.LighteningCutoutsEnabled, 1, 0))
+            wing.Ribs.EnsureLighteningCutoutSlots()
+            AddParameter(command, "@wing_forward_lightening_cutout_chord_fraction", wing.Ribs.GetForwardLighteningCutout().ChordFraction)
+            AddParameter(command, "@wing_forward_lightening_cutout_preferred_diameter", wing.Ribs.GetForwardLighteningCutout().PreferredDiameter)
+            AddParameter(command, "@wing_middle_lightening_cutout_chord_fraction", wing.Ribs.GetMiddleLighteningCutout().ChordFraction)
+            AddParameter(command, "@wing_middle_lightening_cutout_preferred_diameter", wing.Ribs.GetMiddleLighteningCutout().PreferredDiameter)
+            AddParameter(command, "@wing_aft_lightening_cutout_chord_fraction", wing.Ribs.GetAftLighteningCutout().ChordFraction)
+            AddParameter(command, "@wing_aft_lightening_cutout_preferred_diameter", wing.Ribs.GetAftLighteningCutout().PreferredDiameter)
             AddParameter(command, "@wing_main_spar_chord_fraction", wing.MainSpar.ChordFraction)
             AddParameter(command, "@wing_main_spar_outer_diameter", wing.MainSpar.OuterDiameter)
             AddParameter(command, "@wing_main_spar_wall_thickness", wing.MainSpar.WallThickness)

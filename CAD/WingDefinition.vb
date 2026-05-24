@@ -45,6 +45,18 @@ Friend Module WingDefinition
         End Get
     End Property
 
+    Friend ReadOnly Property SweepAngleDegrees As Double
+        Get
+            Return activeConfiguration.SweepAngleDegrees
+        End Get
+    End Property
+
+    Friend ReadOnly Property DihedralAngleDegrees As Double
+        Get
+            Return activeConfiguration.DihedralAngleDegrees
+        End Get
+    End Property
+
     Friend ReadOnly Property RibCountPerSide As Integer
         Get
             Return activeConfiguration.Ribs.CountPerSide
@@ -102,18 +114,6 @@ Friend Module WingDefinition
     Friend ReadOnly Property MainSparCutoutDiameter As Double
         Get
             Return activeConfiguration.MainSpar.RibCutoutDiameter
-        End Get
-    End Property
-
-    Friend ReadOnly Property RibLighteningCutoutEdgeMargin As Double
-        Get
-            Return activeConfiguration.Ribs.LighteningCutoutEdgeMargin
-        End Get
-    End Property
-
-    Friend ReadOnly Property RibLighteningCutoutMinimumDiameter As Double
-        Get
-            Return activeConfiguration.Ribs.LighteningCutoutMinimumDiameter
         End Get
     End Property
 
@@ -190,6 +190,8 @@ Friend Module WingDefinition
             Return cutoutDefinitions
         End If
 
+        activeConfiguration.Ribs.EnsureLighteningCutoutSlots()
+
         For Each cutout As RibLighteningCutoutConfiguration In activeConfiguration.Ribs.LighteningCutouts
             cutoutDefinitions.Add(New RibLighteningCutoutDefinition(cutout.Name,
                                                                     cutout.ChordFraction,
@@ -204,15 +206,55 @@ Friend Module WingDefinition
         Return RootChord + ((TipChord - RootChord) * spanRatio)
     End Function
 
+    Friend Function GetLeadingEdgeXAtSpanPosition(ByVal spanPosition As Double) As Double
+        If Math.Abs(SweepAngleDegrees) < 0.000001 Then
+            Return 0.0
+        End If
+
+        Return Math.Tan(GetSweepAngleRadians()) * Math.Abs(spanPosition)
+    End Function
+
+    Friend Function GetGlobalXAtSpanPosition(ByVal spanPosition As Double,
+                                             ByVal localChordX As Double) As Double
+        Return GetLeadingEdgeXAtSpanPosition(spanPosition) + localChordX
+    End Function
+
+    Friend Function GetDihedralZAtSpanPosition(ByVal spanPosition As Double) As Double
+        If Math.Abs(DihedralAngleDegrees) < 0.000001 Then
+            Return 0.0
+        End If
+
+        Return Math.Tan(GetDihedralAngleRadians()) * Math.Abs(spanPosition)
+    End Function
+
+    Friend Function GetGlobalZAtSpanPosition(ByVal spanPosition As Double,
+                                             ByVal localAirfoilZ As Double) As Double
+        Return GetDihedralZAtSpanPosition(spanPosition) + localAirfoilZ
+    End Function
+
+    Friend Function GetTrailingEdgeXAtSpanPosition(ByVal spanPosition As Double) As Double
+        Return GetGlobalXAtSpanPosition(spanPosition, GetChordAtSpanPosition(spanPosition))
+    End Function
+
     Friend Function GetRibSpanPosition(ByVal ribIndex As Integer) As Double
         Return (HalfSpan / CDbl(RibCountPerSide)) * CDbl(ribIndex)
     End Function
 
     Friend Function GetMainSparCenterXAtSpanPosition(ByVal spanPosition As Double) As Double
+        Return GetGlobalXAtSpanPosition(spanPosition,
+                                        GetMainSparCenterLocalXAtSpanPosition(spanPosition))
+    End Function
+
+    Friend Function GetMainSparCenterLocalXAtSpanPosition(ByVal spanPosition As Double) As Double
         Return GetChordAtSpanPosition(spanPosition) * MainSparChordFraction
     End Function
 
     Friend Function GetMainSparCenterZAtSpanPosition(ByVal spanPosition As Double) As Double
+        Return GetGlobalZAtSpanPosition(spanPosition,
+                                        GetMainSparCenterLocalZAtSpanPosition(spanPosition))
+    End Function
+
+    Friend Function GetMainSparCenterLocalZAtSpanPosition(ByVal spanPosition As Double) As Double
         Return GetChordAtSpanPosition(spanPosition) *
             GetMeanCamberAtChordFraction(MainSparChordFraction)
     End Function
@@ -242,28 +284,30 @@ Friend Module WingDefinition
 
     Friend Function GetRibLighteningCutoutCenterX(ByVal spanPosition As Double,
                                                   ByVal cutoutDefinition As RibLighteningCutoutDefinition) As Double
+        Return GetGlobalXAtSpanPosition(spanPosition,
+                                        GetRibLighteningCutoutCenterLocalX(spanPosition, cutoutDefinition))
+    End Function
+
+    Friend Function GetRibLighteningCutoutCenterLocalX(ByVal spanPosition As Double,
+                                                       ByVal cutoutDefinition As RibLighteningCutoutDefinition) As Double
         Return GetChordAtSpanPosition(spanPosition) * cutoutDefinition.ChordFraction
     End Function
 
     Friend Function GetRibLighteningCutoutCenterZ(ByVal spanPosition As Double,
                                                   ByVal cutoutDefinition As RibLighteningCutoutDefinition) As Double
+        Return GetGlobalZAtSpanPosition(spanPosition,
+                                        GetRibLighteningCutoutCenterLocalZ(spanPosition, cutoutDefinition))
+    End Function
+
+    Friend Function GetRibLighteningCutoutCenterLocalZ(ByVal spanPosition As Double,
+                                                       ByVal cutoutDefinition As RibLighteningCutoutDefinition) As Double
         Return GetChordAtSpanPosition(spanPosition) *
             GetMeanCamberAtChordFraction(cutoutDefinition.ChordFraction)
     End Function
 
     Friend Function GetRibLighteningCutoutDiameter(ByVal spanPosition As Double,
                                                    ByVal cutoutDefinition As RibLighteningCutoutDefinition) As Double
-        Dim chordLength As Double = GetChordAtSpanPosition(spanPosition)
-        Dim airfoilHalfThickness As Double =
-            GetAirfoilHalfThicknessAtChordFraction(cutoutDefinition.ChordFraction, chordLength)
-        Dim availableDiameter As Double =
-            (2.0 * airfoilHalfThickness) - (2.0 * RibLighteningCutoutEdgeMargin)
-
-        If availableDiameter < RibLighteningCutoutMinimumDiameter Then
-            Return 0.0
-        End If
-
-        Return Math.Min(cutoutDefinition.PreferredDiameter, availableDiameter)
+        Return cutoutDefinition.PreferredDiameter
     End Function
 
     Friend Function GetMeanCamberAtChordFraction(ByVal chordFraction As Double) As Double
@@ -320,6 +364,14 @@ Friend Module WingDefinition
 
         Return ((2.0 * AirfoilMaximumCamber) / (aftCamberLength * aftCamberLength)) *
             (AirfoilMaximumCamberPosition - chordFraction)
+    End Function
+
+    Private Function GetSweepAngleRadians() As Double
+        Return SweepAngleDegrees * Math.PI / 180.0
+    End Function
+
+    Private Function GetDihedralAngleRadians() As Double
+        Return DihedralAngleDegrees * Math.PI / 180.0
     End Function
 
     Friend Structure RibLighteningCutoutDefinition

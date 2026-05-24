@@ -45,8 +45,8 @@ Friend Module WingGenerator
         Return GetWingAirfoilLabel().Replace(" ", "")
     End Function
 
-    Private Function GetStationProfileSetName(ByVal stageName As String) As String
-        Return stageName & " - " & GetWingAirfoilLabel() & " Station Profiles"
+    Private Function GetStationProfileSetName() As String
+        Return GetWingAirfoilLabel() & " Station Profiles"
     End Function
 
     Private Function GetDefaultOuterWingSkinName() As String
@@ -58,36 +58,36 @@ Friend Module WingGenerator
     End Function
 
     Private Sub ReportWingStarting(ByVal progressReporter As IGenerationProgressReporter,
-                                   ByVal stageName As String)
+                                   ByVal workflowName As String)
         GenerationProgress.Report(progressReporter,
                                   GenerationProgressUpdate.CreateStarting(WingOperationName,
-                                                                          "Starting " & stageName & "."))
+                                                                          "Starting " & workflowName & "."))
     End Sub
 
     Private Sub ReportWingStep(ByVal progressReporter As IGenerationProgressReporter,
-                               ByVal stageName As String,
+                               ByVal stepName As String,
                                ByVal message As String,
                                ByVal currentStep As Integer,
                                ByVal totalSteps As Integer)
         GenerationProgress.Report(progressReporter,
                                   GenerationProgressUpdate.CreateStep(WingOperationName,
-                                                                      stageName,
+                                                                      stepName,
                                                                       message,
                                                                       currentStep,
                                                                       totalSteps))
     End Sub
 
     Private Sub ReportWingCompleted(ByVal progressReporter As IGenerationProgressReporter,
-                                    ByVal stageName As String)
+                                    ByVal workflowName As String)
         GenerationProgress.Report(progressReporter,
                                   GenerationProgressUpdate.CreateCompleted(WingOperationName,
-                                                                           stageName & " complete."))
+                                                                           workflowName & " complete."))
     End Sub
 
     Private Sub ReportWingFailed(ByVal progressReporter As IGenerationProgressReporter,
-                                 ByVal stageName As String,
+                                 ByVal workflowName As String,
                                  ByVal exception As Exception)
-        Dim message As String = stageName & " failed."
+        Dim message As String = workflowName & " failed."
 
         If exception IsNot Nothing AndAlso Not String.IsNullOrWhiteSpace(exception.Message) Then
             message &= " " & exception.Message
@@ -98,29 +98,59 @@ Friend Module WingGenerator
                                                                         message))
     End Sub
 
-    Friend Function CreateStage4APhysicalRibs() As Object
-        Return CreateStage4APhysicalRibs(WingConfiguration.CreateDefault())
+    Private Sub HideWingConstructionGeometry(ByVal partDocument As Object,
+                                             ByVal part As Object,
+                                             ByVal ParamArray constructionSets() As Object)
+        If constructionSets IsNot Nothing Then
+            For Each constructionSet As Object In constructionSets
+                TryHideObject(partDocument, constructionSet)
+            Next
+        End If
+
+        TryHideSketchesInBodies(partDocument, part)
+        TryUpdatePart(part)
+    End Sub
+
+    Private Sub HideWingStationProfileConstruction(ByVal partDocument As Object,
+                                                   ByVal stationProfiles As List(Of WingStationProfile))
+        If stationProfiles Is Nothing Then
+            Return
+        End If
+
+        For Each stationProfile As WingStationProfile In stationProfiles
+            If stationProfile.ConstructionGeometry Is Nothing Then
+                Continue For
+            End If
+
+            For Each constructionObject As Object In stationProfile.ConstructionGeometry
+                TryHideObject(partDocument, constructionObject)
+            Next
+        Next
+    End Sub
+
+    Friend Function CreatePhysicalRibs() As Object
+        Return CreatePhysicalRibs(WingConfiguration.CreateDefault())
     End Function
 
-    Friend Function CreateStage4APhysicalRibs(ByVal configuration As WingConfiguration,
-                                              Optional ByVal progressReporter As IGenerationProgressReporter = Nothing) As Object
+    Friend Function CreatePhysicalRibs(ByVal configuration As WingConfiguration,
+                                       Optional ByVal progressReporter As IGenerationProgressReporter = Nothing) As Object
         Dim activeProgressReporter As IGenerationProgressReporter = PrepareProgressReporter(progressReporter)
-        Dim stageName As String = "Wing physical ribs"
+        Dim workflowName As String = "Wing physical ribs"
 
-        ReportWingStarting(activeProgressReporter, stageName)
+        ReportWingStarting(activeProgressReporter, workflowName)
 
         Try
             ApplyWingConfiguration(configuration)
-            Dim partDocument As Object = CreateStage4APhysicalRibsCore(activeProgressReporter)
-            ReportWingCompleted(activeProgressReporter, stageName)
+            Dim partDocument As Object = CreatePhysicalRibsCore(activeProgressReporter)
+            ReportWingCompleted(activeProgressReporter, workflowName)
             Return partDocument
         Catch ex As Exception
-            ReportWingFailed(activeProgressReporter, stageName, ex)
+            ReportWingFailed(activeProgressReporter, workflowName, ex)
             Throw
         End Try
     End Function
 
-    Private Function CreateStage4APhysicalRibsCore(ByVal progressReporter As IGenerationProgressReporter) As Object
+    Private Function CreatePhysicalRibsCore(ByVal progressReporter As IGenerationProgressReporter) As Object
         Const totalSteps As Integer = 7
         ReportWingStep(progressReporter, "CATIA setup", "Connecting to CATIA and creating the wing part.", 1, totalSteps)
 
@@ -128,25 +158,25 @@ Friend Module WingGenerator
         catiaApplication.Visible = True
 
         Dim partDocument As Object = catiaApplication.Documents.Add("Part")
-        TrySetPartNumber(partDocument, "Stage_4A_Tapered_Wing_Physical_Ribs")
+        TrySetPartNumber(partDocument, "Tapered_Wing_Physical_Ribs")
 
         Dim part As Object = partDocument.Part
-        TrySetName(part, "Stage_4A_Tapered_Wing_Physical_Ribs")
+        TrySetName(part, "Tapered_Wing_Physical_Ribs")
 
         Dim hybridBodies As Object = part.HybridBodies
         ReportWingStep(progressReporter, "Geometry sets", "Creating CATIA geometry sets.", 2, totalSteps)
 
         Dim planformSet As Object = hybridBodies.Add()
-        TrySetName(planformSet, "Stage 4A - Planform and Rib Stations")
+        TrySetName(planformSet, "Planform and Rib Stations")
 
         Dim airfoilSet As Object = hybridBodies.Add()
-        TrySetName(airfoilSet, GetStationProfileSetName("Stage 4A"))
+        TrySetName(airfoilSet, GetStationProfileSetName())
 
         Dim skinSet As Object = hybridBodies.Add()
-        TrySetName(skinSet, "Stage 4A - Outer Wing Skin")
+        TrySetName(skinSet, "Outer Wing Skin")
 
         Dim ribPlaneSet As Object = hybridBodies.Add()
-        TrySetName(ribPlaneSet, "Stage 4A - Rib Mid-Planes")
+        TrySetName(ribPlaneSet, "Rib Mid-Planes")
 
         Dim hybridShapeFactory As Object = part.HybridShapeFactory
         Dim shapeFactory As Object = part.ShapeFactory
@@ -175,35 +205,40 @@ Friend Module WingGenerator
 
         ReportWingStep(progressReporter, "Final update", "Updating CATIA part.", 7, totalSteps)
         TrySetInWorkObject(part, outerSkin)
-        RequireUpdatePart(part, "Stage 4A wing with physical ribs")
+        RequireUpdatePart(part, "wing with physical ribs")
+        HideWingConstructionGeometry(partDocument,
+                                     part,
+                                     planformSet,
+                                     airfoilSet,
+                                     ribPlaneSet)
         TryReframe(catiaApplication)
 
         Return partDocument
     End Function
 
-    Friend Function CreateStage4BPhysicalRibsAndMainSpar() As Object
-        Return CreateStage4BPhysicalRibsAndMainSpar(WingConfiguration.CreateDefault())
+    Friend Function CreatePhysicalRibsAndMainSpar() As Object
+        Return CreatePhysicalRibsAndMainSpar(WingConfiguration.CreateDefault())
     End Function
 
-    Friend Function CreateStage4BPhysicalRibsAndMainSpar(ByVal configuration As WingConfiguration,
-                                                         Optional ByVal progressReporter As IGenerationProgressReporter = Nothing) As Object
+    Friend Function CreatePhysicalRibsAndMainSpar(ByVal configuration As WingConfiguration,
+                                                  Optional ByVal progressReporter As IGenerationProgressReporter = Nothing) As Object
         Dim activeProgressReporter As IGenerationProgressReporter = PrepareProgressReporter(progressReporter)
-        Dim stageName As String = "Wing ribs and main spar"
+        Dim workflowName As String = "Wing ribs and main spar"
 
-        ReportWingStarting(activeProgressReporter, stageName)
+        ReportWingStarting(activeProgressReporter, workflowName)
 
         Try
             ApplyWingConfiguration(configuration)
-            Dim partDocument As Object = CreateStage4BPhysicalRibsAndMainSparCore(activeProgressReporter)
-            ReportWingCompleted(activeProgressReporter, stageName)
+            Dim partDocument As Object = CreatePhysicalRibsAndMainSparCore(activeProgressReporter)
+            ReportWingCompleted(activeProgressReporter, workflowName)
             Return partDocument
         Catch ex As Exception
-            ReportWingFailed(activeProgressReporter, stageName, ex)
+            ReportWingFailed(activeProgressReporter, workflowName, ex)
             Throw
         End Try
     End Function
 
-    Private Function CreateStage4BPhysicalRibsAndMainSparCore(ByVal progressReporter As IGenerationProgressReporter) As Object
+    Private Function CreatePhysicalRibsAndMainSparCore(ByVal progressReporter As IGenerationProgressReporter) As Object
         Const totalSteps As Integer = 8
         ReportWingStep(progressReporter, "CATIA setup", "Connecting to CATIA and creating the wing part.", 1, totalSteps)
 
@@ -211,28 +246,28 @@ Friend Module WingGenerator
         catiaApplication.Visible = True
 
         Dim partDocument As Object = catiaApplication.Documents.Add("Part")
-        TrySetPartNumber(partDocument, "Stage_4B_Tapered_Wing_Ribs_And_Main_Spar")
+        TrySetPartNumber(partDocument, "Tapered_Wing_Ribs_And_Main_Spar")
 
         Dim part As Object = partDocument.Part
-        TrySetName(part, "Stage_4B_Tapered_Wing_Ribs_And_Main_Spar")
+        TrySetName(part, "Tapered_Wing_Ribs_And_Main_Spar")
 
         Dim hybridBodies As Object = part.HybridBodies
         ReportWingStep(progressReporter, "Geometry sets", "Creating CATIA geometry sets.", 2, totalSteps)
 
         Dim planformSet As Object = hybridBodies.Add()
-        TrySetName(planformSet, "Stage 4B - Planform and Rib Stations")
+        TrySetName(planformSet, "Planform and Rib Stations")
 
         Dim airfoilSet As Object = hybridBodies.Add()
-        TrySetName(airfoilSet, GetStationProfileSetName("Stage 4B"))
+        TrySetName(airfoilSet, GetStationProfileSetName())
 
         Dim skinSet As Object = hybridBodies.Add()
-        TrySetName(skinSet, "Stage 4B - Outer Wing Skin")
+        TrySetName(skinSet, "Outer Wing Skin")
 
         Dim ribPlaneSet As Object = hybridBodies.Add()
-        TrySetName(ribPlaneSet, "Stage 4B - Rib Mid-Planes")
+        TrySetName(ribPlaneSet, "Rib Mid-Planes")
 
         Dim sparReferenceSet As Object = hybridBodies.Add()
-        TrySetName(sparReferenceSet, "Stage 4B - Main Spar References")
+        TrySetName(sparReferenceSet, "Main Spar References")
 
         Dim hybridShapeFactory As Object = part.HybridShapeFactory
         Dim shapeFactory As Object = part.ShapeFactory
@@ -272,35 +307,41 @@ Friend Module WingGenerator
 
         ReportWingStep(progressReporter, "Final update", "Updating CATIA part.", 8, totalSteps)
         TrySetInWorkObject(part, mainSpar)
-        RequireUpdatePart(part, "Stage 4B wing with physical ribs and main spar")
+        RequireUpdatePart(part, "wing with physical ribs and main spar")
+        HideWingConstructionGeometry(partDocument,
+                                     part,
+                                     planformSet,
+                                     airfoilSet,
+                                     ribPlaneSet,
+                                     sparReferenceSet)
         TryReframe(catiaApplication)
 
         Return partDocument
     End Function
 
-    Friend Function CreateStage4CPhysicalRibsMainSparAndAilerons() As Object
-        Return CreateStage4CPhysicalRibsMainSparAndAilerons(WingConfiguration.CreateDefault())
+    Friend Function CreatePhysicalRibsMainSparAndAilerons() As Object
+        Return CreatePhysicalRibsMainSparAndAilerons(WingConfiguration.CreateDefault())
     End Function
 
-    Friend Function CreateStage4CPhysicalRibsMainSparAndAilerons(ByVal configuration As WingConfiguration,
-                                                                 Optional ByVal progressReporter As IGenerationProgressReporter = Nothing) As Object
+    Friend Function CreatePhysicalRibsMainSparAndAilerons(ByVal configuration As WingConfiguration,
+                                                          Optional ByVal progressReporter As IGenerationProgressReporter = Nothing) As Object
         Dim activeProgressReporter As IGenerationProgressReporter = PrepareProgressReporter(progressReporter)
-        Dim stageName As String = "Wing ribs, main spar, and ailerons"
+        Dim workflowName As String = "Wing ribs, main spar, and ailerons"
 
-        ReportWingStarting(activeProgressReporter, stageName)
+        ReportWingStarting(activeProgressReporter, workflowName)
 
         Try
             ApplyWingConfiguration(configuration)
-            Dim partDocument As Object = CreateStage4CPhysicalRibsMainSparAndAileronsCore(activeProgressReporter)
-            ReportWingCompleted(activeProgressReporter, stageName)
+            Dim partDocument As Object = CreatePhysicalRibsMainSparAndAileronsCore(activeProgressReporter)
+            ReportWingCompleted(activeProgressReporter, workflowName)
             Return partDocument
         Catch ex As Exception
-            ReportWingFailed(activeProgressReporter, stageName, ex)
+            ReportWingFailed(activeProgressReporter, workflowName, ex)
             Throw
         End Try
     End Function
 
-    Private Function CreateStage4CPhysicalRibsMainSparAndAileronsCore(ByVal progressReporter As IGenerationProgressReporter) As Object
+    Private Function CreatePhysicalRibsMainSparAndAileronsCore(ByVal progressReporter As IGenerationProgressReporter) As Object
         Const totalSteps As Integer = 10
         ReportWingStep(progressReporter, "CATIA setup", "Connecting to CATIA and creating the wing part.", 1, totalSteps)
 
@@ -308,37 +349,37 @@ Friend Module WingGenerator
         catiaApplication.Visible = True
 
         Dim partDocument As Object = catiaApplication.Documents.Add("Part")
-        TrySetPartNumber(partDocument, "Stage_4C_Tapered_Wing_Ribs_Spar_And_Ailerons")
+        TrySetPartNumber(partDocument, "Tapered_Wing_Ribs_Spar_And_Ailerons")
 
         Dim part As Object = partDocument.Part
-        TrySetName(part, "Stage_4C_Tapered_Wing_Ribs_Spar_And_Ailerons")
+        TrySetName(part, "Tapered_Wing_Ribs_Spar_And_Ailerons")
 
         Dim hybridBodies As Object = part.HybridBodies
         ReportWingStep(progressReporter, "Geometry sets", "Creating CATIA geometry sets.", 2, totalSteps)
 
         Dim planformSet As Object = hybridBodies.Add()
-        TrySetName(planformSet, "Stage 4C - Planform and Rib Stations")
+        TrySetName(planformSet, "Planform and Rib Stations")
 
         Dim airfoilSet As Object = hybridBodies.Add()
-        TrySetName(airfoilSet, GetStationProfileSetName("Stage 4C"))
+        TrySetName(airfoilSet, GetStationProfileSetName())
 
         Dim skinSet As Object = hybridBodies.Add()
-        TrySetName(skinSet, "Stage 4C - Outer Wing Skin")
+        TrySetName(skinSet, "Outer Wing Skin")
 
         Dim ribPlaneSet As Object = hybridBodies.Add()
-        TrySetName(ribPlaneSet, "Stage 4C - Rib Mid-Planes")
+        TrySetName(ribPlaneSet, "Rib Mid-Planes")
 
         Dim sparReferenceSet As Object = hybridBodies.Add()
-        TrySetName(sparReferenceSet, "Stage 4C - Main Spar References")
+        TrySetName(sparReferenceSet, "Main Spar References")
 
         Dim aileronReferenceSet As Object = hybridBodies.Add()
-        TrySetName(aileronReferenceSet, "Stage 4C - Aileron Cut References")
+        TrySetName(aileronReferenceSet, "Aileron Cut References")
 
         Dim aileronRearSparSet As Object = hybridBodies.Add()
-        TrySetName(aileronRearSparSet, "Stage 4C - Aileron Rear Hinge Spars")
+        TrySetName(aileronRearSparSet, "Aileron Rear Hinge Spars")
 
         Dim aileronSkinSet As Object = hybridBodies.Add()
-        TrySetName(aileronSkinSet, "Stage 4C - Aileron Skins")
+        TrySetName(aileronSkinSet, "Aileron Skins")
 
         Dim hybridShapeFactory As Object = part.HybridShapeFactory
         Dim shapeFactory As Object = part.ShapeFactory
@@ -353,13 +394,13 @@ Friend Module WingGenerator
         Next
 
         ReportWingStep(progressReporter, "Wing skins", "Creating split fixed-wing and aileron skin surfaces.", 5, totalSteps)
-        CreateStage4CSplitSkinSurfaces(partDocument,
-                                        part,
-                                        hybridShapeFactory,
-                                        shapeFactory,
-                                        skinSet,
-                                        aileronSkinSet,
-                                        stations)
+        CreateSplitSkinSurfaces(partDocument,
+                                 part,
+                                 hybridShapeFactory,
+                                 shapeFactory,
+                                 skinSet,
+                                 aileronSkinSet,
+                                 stations)
         ReportWingStep(progressReporter, "Aileron spars", "Creating aileron rear hinge spars.", 6, totalSteps)
         AddAileronRearHingeSpars(part,
                                   hybridShapeFactory,
@@ -387,35 +428,43 @@ Friend Module WingGenerator
 
         ReportWingStep(progressReporter, "Final update", "Updating CATIA part.", 10, totalSteps)
         TrySetInWorkObject(part, mainSpar)
-        RequireUpdatePart(part, "Stage 4C wing with physical ribs, main spar, and aileron cuts")
+        RequireUpdatePart(part, "wing with physical ribs, main spar, and aileron cuts")
+        HideWingConstructionGeometry(partDocument,
+                                     part,
+                                     planformSet,
+                                     airfoilSet,
+                                     ribPlaneSet,
+                                     sparReferenceSet,
+                                     aileronReferenceSet,
+                                     aileronRearSparSet)
         TryReframe(catiaApplication)
 
         Return partDocument
     End Function
 
-    Friend Function CreateStage3OuterWingSkin() As Object
-        Return CreateStage3OuterWingSkin(WingConfiguration.CreateDefault())
+    Friend Function CreateOuterWingSkin() As Object
+        Return CreateOuterWingSkin(WingConfiguration.CreateDefault())
     End Function
 
-    Friend Function CreateStage3OuterWingSkin(ByVal configuration As WingConfiguration,
-                                              Optional ByVal progressReporter As IGenerationProgressReporter = Nothing) As Object
+    Friend Function CreateOuterWingSkin(ByVal configuration As WingConfiguration,
+                                        Optional ByVal progressReporter As IGenerationProgressReporter = Nothing) As Object
         Dim activeProgressReporter As IGenerationProgressReporter = PrepareProgressReporter(progressReporter)
-        Dim stageName As String = "Outer wing skin"
+        Dim workflowName As String = "Outer wing skin"
 
-        ReportWingStarting(activeProgressReporter, stageName)
+        ReportWingStarting(activeProgressReporter, workflowName)
 
         Try
             ApplyWingConfiguration(configuration)
-            Dim partDocument As Object = CreateStage3OuterWingSkinCore(activeProgressReporter)
-            ReportWingCompleted(activeProgressReporter, stageName)
+            Dim partDocument As Object = CreateOuterWingSkinCore(activeProgressReporter)
+            ReportWingCompleted(activeProgressReporter, workflowName)
             Return partDocument
         Catch ex As Exception
-            ReportWingFailed(activeProgressReporter, stageName, ex)
+            ReportWingFailed(activeProgressReporter, workflowName, ex)
             Throw
         End Try
     End Function
 
-    Private Function CreateStage3OuterWingSkinCore(ByVal progressReporter As IGenerationProgressReporter) As Object
+    Private Function CreateOuterWingSkinCore(ByVal progressReporter As IGenerationProgressReporter) As Object
         Const totalSteps As Integer = 6
         ReportWingStep(progressReporter, "CATIA setup", "Connecting to CATIA and creating the wing part.", 1, totalSteps)
 
@@ -423,22 +472,22 @@ Friend Module WingGenerator
         catiaApplication.Visible = True
 
         Dim partDocument As Object = catiaApplication.Documents.Add("Part")
-        TrySetPartNumber(partDocument, "Stage_3_Tapered_Wing_Outer_Skin")
+        TrySetPartNumber(partDocument, "Tapered_Wing_Outer_Skin")
 
         Dim part As Object = partDocument.Part
-        TrySetName(part, "Stage_3_Tapered_Wing_Outer_Skin")
+        TrySetName(part, "Tapered_Wing_Outer_Skin")
 
         Dim hybridBodies As Object = part.HybridBodies
         ReportWingStep(progressReporter, "Geometry sets", "Creating CATIA geometry sets.", 2, totalSteps)
 
         Dim planformSet As Object = hybridBodies.Add()
-        TrySetName(planformSet, "Stage 3 - Planform and Rib Stations")
+        TrySetName(planformSet, "Planform and Rib Stations")
 
         Dim airfoilSet As Object = hybridBodies.Add()
-        TrySetName(airfoilSet, GetStationProfileSetName("Stage 3"))
+        TrySetName(airfoilSet, GetStationProfileSetName())
 
         Dim skinSet As Object = hybridBodies.Add()
-        TrySetName(skinSet, "Stage 3 - Outer Wing Skin")
+        TrySetName(skinSet, "Outer Wing Skin")
 
         Dim hybridShapeFactory As Object = part.HybridShapeFactory
 
@@ -459,35 +508,39 @@ Friend Module WingGenerator
                                                                   stationProfiles)
         ReportWingStep(progressReporter, "Final update", "Updating CATIA part.", 6, totalSteps)
         TrySetInWorkObject(part, outerSkin)
-        RequireUpdatePart(part, "Stage 3 outer wing skin")
+        RequireUpdatePart(part, "outer wing skin")
+        HideWingConstructionGeometry(partDocument,
+                                     part,
+                                     planformSet,
+                                     airfoilSet)
         TryReframe(catiaApplication)
 
         Return partDocument
     End Function
 
-    Friend Function CreateStage2AirfoilStations() As Object
-        Return CreateStage2AirfoilStations(WingConfiguration.CreateDefault())
+    Friend Function CreateAirfoilStations() As Object
+        Return CreateAirfoilStations(WingConfiguration.CreateDefault())
     End Function
 
-    Friend Function CreateStage2AirfoilStations(ByVal configuration As WingConfiguration,
-                                                Optional ByVal progressReporter As IGenerationProgressReporter = Nothing) As Object
+    Friend Function CreateAirfoilStations(ByVal configuration As WingConfiguration,
+                                          Optional ByVal progressReporter As IGenerationProgressReporter = Nothing) As Object
         Dim activeProgressReporter As IGenerationProgressReporter = PrepareProgressReporter(progressReporter)
-        Dim stageName As String = "Airfoil stations"
+        Dim workflowName As String = "Airfoil stations"
 
-        ReportWingStarting(activeProgressReporter, stageName)
+        ReportWingStarting(activeProgressReporter, workflowName)
 
         Try
             ApplyWingConfiguration(configuration)
-            Dim partDocument As Object = CreateStage2AirfoilStationsCore(activeProgressReporter)
-            ReportWingCompleted(activeProgressReporter, stageName)
+            Dim partDocument As Object = CreateAirfoilStationsCore(activeProgressReporter)
+            ReportWingCompleted(activeProgressReporter, workflowName)
             Return partDocument
         Catch ex As Exception
-            ReportWingFailed(activeProgressReporter, stageName, ex)
+            ReportWingFailed(activeProgressReporter, workflowName, ex)
             Throw
         End Try
     End Function
 
-    Private Function CreateStage2AirfoilStationsCore(ByVal progressReporter As IGenerationProgressReporter) As Object
+    Private Function CreateAirfoilStationsCore(ByVal progressReporter As IGenerationProgressReporter) As Object
         Const totalSteps As Integer = 5
         ReportWingStep(progressReporter, "CATIA setup", "Connecting to CATIA and creating the wing part.", 1, totalSteps)
 
@@ -495,19 +548,19 @@ Friend Module WingGenerator
         catiaApplication.Visible = True
 
         Dim partDocument As Object = catiaApplication.Documents.Add("Part")
-        TrySetPartNumber(partDocument, "Stage_2_Tapered_Wing_" & GetWingAirfoilIdentifier() & "_Stations")
+        TrySetPartNumber(partDocument, "Tapered_Wing_" & GetWingAirfoilIdentifier() & "_Stations")
 
         Dim part As Object = partDocument.Part
-        TrySetName(part, "Stage_2_Tapered_Wing_" & GetWingAirfoilIdentifier() & "_Stations")
+        TrySetName(part, "Tapered_Wing_" & GetWingAirfoilIdentifier() & "_Stations")
 
         Dim hybridBodies As Object = part.HybridBodies
         ReportWingStep(progressReporter, "Geometry sets", "Creating CATIA geometry sets.", 2, totalSteps)
 
         Dim planformSet As Object = hybridBodies.Add()
-        TrySetName(planformSet, "Stage 2 - Planform and Rib Stations")
+        TrySetName(planformSet, "Planform and Rib Stations")
 
         Dim airfoilSet As Object = hybridBodies.Add()
-        TrySetName(airfoilSet, GetStationProfileSetName("Stage 2"))
+        TrySetName(airfoilSet, GetStationProfileSetName())
 
         Dim hybridShapeFactory As Object = part.HybridShapeFactory
 
@@ -520,35 +573,35 @@ Friend Module WingGenerator
         Next
 
         ReportWingStep(progressReporter, "Final update", "Updating CATIA part.", 5, totalSteps)
-        RequireUpdatePart(part, "Stage 2 airfoil stations")
+        RequireUpdatePart(part, "airfoil stations")
         TryReframe(catiaApplication)
 
         Return partDocument
     End Function
 
-    Friend Function CreateStage1Planform() As Object
-        Return CreateStage1Planform(WingConfiguration.CreateDefault())
+    Friend Function CreatePlanform() As Object
+        Return CreatePlanform(WingConfiguration.CreateDefault())
     End Function
 
-    Friend Function CreateStage1Planform(ByVal configuration As WingConfiguration,
-                                         Optional ByVal progressReporter As IGenerationProgressReporter = Nothing) As Object
+    Friend Function CreatePlanform(ByVal configuration As WingConfiguration,
+                                   Optional ByVal progressReporter As IGenerationProgressReporter = Nothing) As Object
         Dim activeProgressReporter As IGenerationProgressReporter = PrepareProgressReporter(progressReporter)
-        Dim stageName As String = "Planform"
+        Dim workflowName As String = "Planform"
 
-        ReportWingStarting(activeProgressReporter, stageName)
+        ReportWingStarting(activeProgressReporter, workflowName)
 
         Try
             ApplyWingConfiguration(configuration)
-            Dim partDocument As Object = CreateStage1PlanformCore(activeProgressReporter)
-            ReportWingCompleted(activeProgressReporter, stageName)
+            Dim partDocument As Object = CreatePlanformCore(activeProgressReporter)
+            ReportWingCompleted(activeProgressReporter, workflowName)
             Return partDocument
         Catch ex As Exception
-            ReportWingFailed(activeProgressReporter, stageName, ex)
+            ReportWingFailed(activeProgressReporter, workflowName, ex)
             Throw
         End Try
     End Function
 
-    Private Function CreateStage1PlanformCore(ByVal progressReporter As IGenerationProgressReporter) As Object
+    Private Function CreatePlanformCore(ByVal progressReporter As IGenerationProgressReporter) As Object
         Const totalSteps As Integer = 4
         ReportWingStep(progressReporter, "CATIA setup", "Connecting to CATIA and creating the wing part.", 1, totalSteps)
 
@@ -556,23 +609,23 @@ Friend Module WingGenerator
         catiaApplication.Visible = True
 
         Dim partDocument As Object = catiaApplication.Documents.Add("Part")
-        TrySetPartNumber(partDocument, "Stage_1_Tapered_Wing_Planform")
+        TrySetPartNumber(partDocument, "Tapered_Wing_Planform")
 
         Dim part As Object = partDocument.Part
-        TrySetName(part, "Stage_1_Tapered_Wing_Planform")
+        TrySetName(part, "Tapered_Wing_Planform")
 
         Dim hybridBodies As Object = part.HybridBodies
         ReportWingStep(progressReporter, "Geometry sets", "Creating CATIA geometry sets.", 2, totalSteps)
-        Dim stageSet As Object = hybridBodies.Add()
-        TrySetName(stageSet, "Stage 1 - Planform and Rib Stations")
+        Dim planformSet As Object = hybridBodies.Add()
+        TrySetName(planformSet, "Planform and Rib Stations")
 
         Dim hybridShapeFactory As Object = part.HybridShapeFactory
 
         ReportWingStep(progressReporter, "Planform", "Building planform and rib station references.", 3, totalSteps)
-        AddPlanformGeometry(part, hybridShapeFactory, stageSet)
+        AddPlanformGeometry(part, hybridShapeFactory, planformSet)
 
         ReportWingStep(progressReporter, "Final update", "Updating CATIA part.", 4, totalSteps)
-        RequireUpdatePart(part, "Stage 1 planform")
+        RequireUpdatePart(part, "planform")
         TryReframe(catiaApplication)
 
         Return partDocument
@@ -581,12 +634,32 @@ Friend Module WingGenerator
     Private Sub AddPlanformGeometry(ByVal part As Object,
                                     ByVal hybridShapeFactory As Object,
                                     ByVal targetSet As Object)
-        AddPlanformLine(part, hybridShapeFactory, targetSet, "Leading edge full span",
-                        0.0, -WingDefinition.HalfSpan, 0.0, WingDefinition.HalfSpan)
+        If Math.Abs(WingDefinition.SweepAngleDegrees) < 0.000001 Then
+            AddPlanformLine(part, hybridShapeFactory, targetSet, "Leading edge full span",
+                            0.0, -WingDefinition.HalfSpan, 0.0, WingDefinition.HalfSpan)
+        Else
+            AddPlanformLine(part, hybridShapeFactory, targetSet, "Right swept leading edge",
+                            WingDefinition.GetLeadingEdgeXAtSpanPosition(0.0),
+                            0.0,
+                            WingDefinition.GetLeadingEdgeXAtSpanPosition(WingDefinition.HalfSpan),
+                            WingDefinition.HalfSpan)
+            AddPlanformLine(part, hybridShapeFactory, targetSet, "Left swept leading edge",
+                            WingDefinition.GetLeadingEdgeXAtSpanPosition(0.0),
+                            0.0,
+                            WingDefinition.GetLeadingEdgeXAtSpanPosition(-WingDefinition.HalfSpan),
+                            -WingDefinition.HalfSpan)
+        End If
+
         AddPlanformLine(part, hybridShapeFactory, targetSet, "Right tapered trailing edge",
-                        WingDefinition.RootChord, 0.0, WingDefinition.TipChord, WingDefinition.HalfSpan)
+                        WingDefinition.GetTrailingEdgeXAtSpanPosition(0.0),
+                        0.0,
+                        WingDefinition.GetTrailingEdgeXAtSpanPosition(WingDefinition.HalfSpan),
+                        WingDefinition.HalfSpan)
         AddPlanformLine(part, hybridShapeFactory, targetSet, "Left tapered trailing edge",
-                        WingDefinition.RootChord, 0.0, WingDefinition.TipChord, -WingDefinition.HalfSpan)
+                        WingDefinition.GetTrailingEdgeXAtSpanPosition(0.0),
+                        0.0,
+                        WingDefinition.GetTrailingEdgeXAtSpanPosition(-WingDefinition.HalfSpan),
+                        -WingDefinition.HalfSpan)
 
         AddRibStationLine(part, hybridShapeFactory, targetSet, "Rib_00_Center", 0.0)
 
@@ -608,7 +681,10 @@ Friend Module WingGenerator
         Dim localChord As Double = WingDefinition.GetChordAtSpanPosition(spanPosition)
 
         AddPlanformLine(part, hybridShapeFactory, targetSet, ribName,
-                        0.0, spanPosition, localChord, spanPosition)
+                        WingDefinition.GetLeadingEdgeXAtSpanPosition(spanPosition),
+                        spanPosition,
+                        WingDefinition.GetGlobalXAtSpanPosition(spanPosition, localChord),
+                        spanPosition)
     End Sub
 
     Private Sub AddPlanformLine(ByVal part As Object,
@@ -619,11 +695,17 @@ Friend Module WingGenerator
                                 ByVal startY As Double,
                                 ByVal endX As Double,
                                 ByVal endY As Double)
-        Dim startPoint As Object = hybridShapeFactory.AddNewPointCoord(startX, startY, 0.0)
+        Dim startPoint As Object =
+            hybridShapeFactory.AddNewPointCoord(startX,
+                                                startY,
+                                                WingDefinition.GetGlobalZAtSpanPosition(startY, 0.0))
         TrySetName(startPoint, lineName & " start")
         targetSet.AppendHybridShape(startPoint)
 
-        Dim endPoint As Object = hybridShapeFactory.AddNewPointCoord(endX, endY, 0.0)
+        Dim endPoint As Object =
+            hybridShapeFactory.AddNewPointCoord(endX,
+                                                endY,
+                                                WingDefinition.GetGlobalZAtSpanPosition(endY, 0.0))
         TrySetName(endPoint, lineName & " end")
         targetSet.AppendHybridShape(endPoint)
 
@@ -690,14 +772,19 @@ Friend Module WingGenerator
         TrySetSplineOptions(profileSpline, True)
         TrySetName(profileSpline, station.Name & " profile")
         Dim closingPointReference As Object = Nothing
+        Dim constructionGeometry As New List(Of Object)()
 
         For pointIndex As Integer = 0 To airfoilCoordinates.Count - 1
             Dim coordinate As AirfoilCoordinate = airfoilCoordinates(pointIndex)
-            Dim airfoilPoint As Object = hybridShapeFactory.AddNewPointCoord(coordinate.X,
-                                                                             station.SpanPosition,
-                                                                             coordinate.Y)
+            Dim airfoilPoint As Object =
+                hybridShapeFactory.AddNewPointCoord(WingDefinition.GetGlobalXAtSpanPosition(station.SpanPosition,
+                                                                                            coordinate.X),
+                                                    station.SpanPosition,
+                                                    WingDefinition.GetGlobalZAtSpanPosition(station.SpanPosition,
+                                                                                            coordinate.Y))
             TrySetName(airfoilPoint, station.Name & "_P" & (pointIndex + 1).ToString("000"))
             targetSet.AppendHybridShape(airfoilPoint)
+            constructionGeometry.Add(airfoilPoint)
 
             Dim pointReference As Object = part.CreateReferenceFromObject(airfoilPoint)
 
@@ -709,15 +796,21 @@ Friend Module WingGenerator
         Next
 
         targetSet.AppendHybridShape(profileSpline)
+        constructionGeometry.Add(profileSpline)
 
-        Return New WingStationProfile(station.Name, profileSpline, closingPointReference)
+        Return New WingStationProfile(station.Name,
+                                      profileSpline,
+                                      closingPointReference,
+                                      constructionGeometry)
     End Function
 
     Private Function CreateOuterWingSkinFromProfiles(ByVal part As Object,
                                                      ByVal hybridShapeFactory As Object,
                                                      ByVal targetSet As Object,
                                                      ByVal stationProfiles As List(Of WingStationProfile),
-                                                     Optional ByVal skinName As String = Nothing) As Object
+                                                     Optional ByVal skinName As String = Nothing,
+                                                     Optional ByVal partDocument As Object = Nothing,
+                                                     Optional ByVal hideProfileConstruction As Boolean = False) As Object
         If stationProfiles.Count < 2 Then
             Throw New InvalidOperationException("At least two airfoil station profiles are required to create the wing skin.")
         End If
@@ -742,35 +835,41 @@ Friend Module WingGenerator
         targetSet.AppendHybridShape(outerSkinLoft)
         RequireUpdateObject(part, outerSkinLoft, effectiveSkinName)
 
+        If hideProfileConstruction AndAlso partDocument IsNot Nothing Then
+            HideWingStationProfileConstruction(partDocument, stationProfiles)
+        End If
+
         Return outerSkinLoft
     End Function
 
-    Private Sub CreateStage4CSplitSkinSurfaces(ByVal partDocument As Object,
-                                               ByVal part As Object,
-                                               ByVal hybridShapeFactory As Object,
-                                               ByVal shapeFactory As Object,
-                                               ByVal fixedSkinSet As Object,
-                                               ByVal aileronSkinSet As Object,
-                                               ByVal stations As List(Of WingStation))
-        CreateCenterFixedWingSkinSurface(part,
+    Private Sub CreateSplitSkinSurfaces(ByVal partDocument As Object,
+                                        ByVal part As Object,
+                                        ByVal hybridShapeFactory As Object,
+                                        ByVal shapeFactory As Object,
+                                        ByVal fixedSkinSet As Object,
+                                        ByVal aileronSkinSet As Object,
+                                        ByVal stations As List(Of WingStation))
+        CreateCenterFixedWingSkinSurface(partDocument,
+                                         part,
                                          hybridShapeFactory,
                                          fixedSkinSet,
                                          stations,
                                          True,
                                          "Center fixed wing upper skin")
-        CreateCenterFixedWingSkinSurface(part,
+        CreateCenterFixedWingSkinSurface(partDocument,
+                                         part,
                                          hybridShapeFactory,
                                          fixedSkinSet,
                                          stations,
                                          False,
                                          "Center fixed wing lower skin")
-        AddOutboardFixedWingSkinSurfaces(part, hybridShapeFactory, fixedSkinSet, -1.0, "Left")
-        AddOutboardFixedWingSkinSurfaces(part, hybridShapeFactory, fixedSkinSet, 1.0, "Right")
+        AddOutboardFixedWingSkinSurfaces(partDocument, part, hybridShapeFactory, fixedSkinSet, -1.0, "Left")
+        AddOutboardFixedWingSkinSurfaces(partDocument, part, hybridShapeFactory, fixedSkinSet, 1.0, "Right")
 
         Dim leftAileronSkins As List(Of Object) =
-            AddAileronSkinSurfaces(part, hybridShapeFactory, shapeFactory, aileronSkinSet, -1.0, "Left")
+            AddAileronSkinSurfaces(partDocument, part, hybridShapeFactory, shapeFactory, aileronSkinSet, -1.0, "Left")
         Dim rightAileronSkins As List(Of Object) =
-            AddAileronSkinSurfaces(part, hybridShapeFactory, shapeFactory, aileronSkinSet, 1.0, "Right")
+            AddAileronSkinSurfaces(partDocument, part, hybridShapeFactory, shapeFactory, aileronSkinSet, 1.0, "Right")
 
         For Each aileronSkin As Object In leftAileronSkins
             TrySetObjectColor(partDocument, aileronSkin, 255, 145, 0)
@@ -780,10 +879,11 @@ Friend Module WingGenerator
             TrySetObjectColor(partDocument, aileronSkin, 255, 145, 0)
         Next
 
-        RequireUpdatePart(part, "Stage 4C split fixed wing and aileron skin surfaces")
+        RequireUpdatePart(part, "split fixed wing and aileron skin surfaces")
     End Sub
 
-    Private Function CreateCenterFixedWingSkinSurface(ByVal part As Object,
+    Private Function CreateCenterFixedWingSkinSurface(ByVal partDocument As Object,
+                                                      ByVal part As Object,
                                                       ByVal hybridShapeFactory As Object,
                                                       ByVal targetSet As Object,
                                                       ByVal stations As List(Of WingStation),
@@ -820,7 +920,9 @@ Friend Module WingGenerator
                                                hybridShapeFactory,
                                                targetSet,
                                                centerSkinProfiles,
-                                               skinName)
+                                               skinName,
+                                               partDocument,
+                                               True)
     End Function
 
     Private Function AddOpenAirfoilSurfaceProfile(ByVal part As Object,
@@ -841,7 +943,8 @@ Friend Module WingGenerator
                                        BuildAirfoilSurfaceProfileCoordinates(chordLength, upperSurface))
     End Function
 
-    Private Sub AddOutboardFixedWingSkinSurfaces(ByVal part As Object,
+    Private Sub AddOutboardFixedWingSkinSurfaces(ByVal partDocument As Object,
+                                                 ByVal part As Object,
                                                  ByVal hybridShapeFactory As Object,
                                                  ByVal targetSet As Object,
                                                  ByVal spanSign As Double,
@@ -864,10 +967,13 @@ Friend Module WingGenerator
                                         hybridShapeFactory,
                                         targetSet,
                                         fixedWingProfiles,
-                                        sideName & " outboard fixed wing skin")
+                                        sideName & " outboard fixed wing skin",
+                                        partDocument,
+                                        True)
     End Sub
 
-    Private Function AddAileronSkinSurfaces(ByVal part As Object,
+    Private Function AddAileronSkinSurfaces(ByVal partDocument As Object,
+                                            ByVal part As Object,
                                             ByVal hybridShapeFactory As Object,
                                             ByVal shapeFactory As Object,
                                             ByVal targetSet As Object,
@@ -893,7 +999,9 @@ Friend Module WingGenerator
                                             hybridShapeFactory,
                                             targetSet,
                                             aileronProfiles,
-                                            sideName & " aileron skin surface")
+                                            sideName & " aileron skin surface",
+                                            partDocument,
+                                            True)
         Dim aileronSolid As Object =
             CreateClosedSurfaceSolid(part,
                                      shapeFactory,
@@ -911,7 +1019,7 @@ Friend Module WingGenerator
                                          ByVal targetSet As Object)
         AddAileronRearHingeSparForSide(part, hybridShapeFactory, shapeFactory, targetSet, -1.0, "Left")
         AddAileronRearHingeSparForSide(part, hybridShapeFactory, shapeFactory, targetSet, 1.0, "Right")
-        RequireUpdatePart(part, "Stage 4C aileron rear hinge spars")
+        RequireUpdatePart(part, "aileron rear hinge spars")
     End Sub
 
     Private Function AddAileronRearHingeSparForSide(ByVal part As Object,
@@ -978,15 +1086,20 @@ Friend Module WingGenerator
         TrySetSplineOptions(profileSpline, True)
         TrySetName(profileSpline, profileName)
         Dim closingPointReference As Object = Nothing
+        Dim constructionGeometry As New List(Of Object)()
 
         For pointIndex As Integer = 0 To skinCoordinates.Count - 1
             Dim coordinate As AirfoilCoordinate = skinCoordinates(pointIndex)
-            Dim profilePoint As Object = hybridShapeFactory.AddNewPointCoord(coordinate.X,
-                                                                             spanPosition,
-                                                                             coordinate.Y)
+            Dim profilePoint As Object =
+                hybridShapeFactory.AddNewPointCoord(WingDefinition.GetGlobalXAtSpanPosition(spanPosition,
+                                                                                            coordinate.X),
+                                                    spanPosition,
+                                                    WingDefinition.GetGlobalZAtSpanPosition(spanPosition,
+                                                                                            coordinate.Y))
             TrySetName(profilePoint,
                        pointPrefix & "_P" & (pointIndex + 1).ToString("000"))
             targetSet.AppendHybridShape(profilePoint)
+            constructionGeometry.Add(profilePoint)
 
             Dim pointReference As Object = part.CreateReferenceFromObject(profilePoint)
 
@@ -998,8 +1111,12 @@ Friend Module WingGenerator
         Next
 
         targetSet.AppendHybridShape(profileSpline)
+        constructionGeometry.Add(profileSpline)
 
-        Return New WingStationProfile(profileName, profileSpline, closingPointReference)
+        Return New WingStationProfile(profileName,
+                                      profileSpline,
+                                      closingPointReference,
+                                      constructionGeometry)
     End Function
 
     Private Function AddOpenSplitSkinProfile(ByVal part As Object,
@@ -1016,22 +1133,31 @@ Friend Module WingGenerator
         Dim profileSpline As Object = hybridShapeFactory.AddNewSpline()
         TrySetSplineOptions(profileSpline, False)
         TrySetName(profileSpline, profileName)
+        Dim constructionGeometry As New List(Of Object)()
 
         For pointIndex As Integer = 0 To skinCoordinates.Count - 1
             Dim coordinate As AirfoilCoordinate = skinCoordinates(pointIndex)
-            Dim profilePoint As Object = hybridShapeFactory.AddNewPointCoord(coordinate.X,
-                                                                             spanPosition,
-                                                                             coordinate.Y)
+            Dim profilePoint As Object =
+                hybridShapeFactory.AddNewPointCoord(WingDefinition.GetGlobalXAtSpanPosition(spanPosition,
+                                                                                            coordinate.X),
+                                                    spanPosition,
+                                                    WingDefinition.GetGlobalZAtSpanPosition(spanPosition,
+                                                                                            coordinate.Y))
             TrySetName(profilePoint,
                        pointPrefix & "_P" & (pointIndex + 1).ToString("000"))
             targetSet.AppendHybridShape(profilePoint)
+            constructionGeometry.Add(profilePoint)
 
             profileSpline.AddPoint(part.CreateReferenceFromObject(profilePoint))
         Next
 
         targetSet.AppendHybridShape(profileSpline)
+        constructionGeometry.Add(profileSpline)
 
-        Return New WingStationProfile(profileName, profileSpline, Nothing)
+        Return New WingStationProfile(profileName,
+                                      profileSpline,
+                                      Nothing,
+                                      constructionGeometry)
     End Function
 
     Private Sub AddAileronCutReferenceGeometry(ByVal part As Object,
@@ -1124,7 +1250,7 @@ Friend Module WingGenerator
                                                ByVal targetSet As Object,
                                                ByVal curveName As String,
                                                ByVal spanSign As Double,
-                                               ByVal globalX As Double,
+                                               ByVal localX As Double,
                                                ByVal upperSurface As Boolean)
         Dim curvePoints As New List(Of PointCoordinate3D)()
         Dim segmentCount As Integer = 12
@@ -1136,11 +1262,15 @@ Friend Module WingGenerator
             Dim spanPosition As Double = spanSign * absoluteSpan
             Dim chordLength As Double = WingDefinition.GetChordAtSpanPosition(spanPosition)
             Dim surfacePoint As AirfoilCoordinate =
-                GetAirfoilSurfacePointAtGlobalX(chordLength,
-                                                globalX,
-                                                upperSurface)
+                GetAirfoilSurfacePointAtLocalX(chordLength,
+                                               localX,
+                                               upperSurface)
 
-            curvePoints.Add(New PointCoordinate3D(surfacePoint.X, spanPosition, surfacePoint.Y))
+            curvePoints.Add(New PointCoordinate3D(WingDefinition.GetGlobalXAtSpanPosition(spanPosition,
+                                                                                          surfacePoint.X),
+                                                  spanPosition,
+                                                  WingDefinition.GetGlobalZAtSpanPosition(spanPosition,
+                                                                                          surfacePoint.Y)))
         Next
 
         CreateSplineThroughPoints(part, hybridShapeFactory, targetSet, curveName, curvePoints)
@@ -1159,11 +1289,15 @@ Friend Module WingGenerator
 
         For pointIndex As Integer = 0 To segmentCount
             Dim ratio As Double = CDbl(pointIndex) / CDbl(segmentCount)
-            Dim globalX As Double = startX + ((chordLength - startX) * ratio)
+            Dim localX As Double = startX + ((chordLength - startX) * ratio)
             Dim surfacePoint As AirfoilCoordinate =
-                GetAirfoilSurfacePointAtGlobalX(chordLength, globalX, upperSurface)
+                GetAirfoilSurfacePointAtLocalX(chordLength, localX, upperSurface)
 
-            curvePoints.Add(New PointCoordinate3D(surfacePoint.X, spanPosition, surfacePoint.Y))
+            curvePoints.Add(New PointCoordinate3D(WingDefinition.GetGlobalXAtSpanPosition(spanPosition,
+                                                                                          surfacePoint.X),
+                                                  spanPosition,
+                                                  WingDefinition.GetGlobalZAtSpanPosition(spanPosition,
+                                                                                          surfacePoint.Y)))
         Next
 
         CreateSplineThroughPoints(part, hybridShapeFactory, targetSet, curveName, curvePoints)
@@ -1355,10 +1489,12 @@ Friend Module WingGenerator
                                                   ByVal station As WingStation,
                                                   ByVal sketchAxis As SketchAxisData,
                                                   ByVal ribProfileRegion As RibProfileRegion)
-        Dim globalCenterX As Double = WingDefinition.GetMainSparCenterXAtSpanPosition(station.SpanPosition)
+        Dim localCenterX As Double = WingDefinition.GetMainSparCenterLocalXAtSpanPosition(station.SpanPosition)
+        Dim globalCenterX As Double = WingDefinition.GetGlobalXAtSpanPosition(station.SpanPosition,
+                                                                               localCenterX)
         Dim radius As Double = WingDefinition.MainSparCutoutDiameter / 2.0
 
-        If Not IsCircularCutoutInsideRibRegion(globalCenterX,
+        If Not IsCircularCutoutInsideRibRegion(localCenterX,
                                                radius,
                                                station.SpanPosition,
                                                ribProfileRegion) Then
@@ -1384,36 +1520,40 @@ Friend Module WingGenerator
             Dim cutoutDiameter As Double =
                 WingDefinition.GetRibLighteningCutoutDiameter(station.SpanPosition, cutoutDefinition)
 
-            If cutoutDiameter >= WingDefinition.RibLighteningCutoutMinimumDiameter Then
-                Dim radius As Double = cutoutDiameter / 2.0
-                Dim globalCenterX As Double =
-                    WingDefinition.GetRibLighteningCutoutCenterX(station.SpanPosition, cutoutDefinition)
-
-                If Not IsCircularCutoutInsideRibRegion(globalCenterX,
-                                                       radius,
-                                                       station.SpanPosition,
-                                                       ribProfileRegion) Then
-                    Continue For
-                End If
-
-                Dim cutoutCenter As AirfoilCoordinate =
-                    ConvertGlobalPointToSketchPoint(globalCenterX,
-                                                    station.SpanPosition,
-                                                    WingDefinition.GetRibLighteningCutoutCenterZ(station.SpanPosition, cutoutDefinition),
-                                                    sketchAxis)
-
-                CreateSketchCircle(sketchFactory, cutoutCenter, radius)
+            If cutoutDiameter <= 0.0 Then
+                Continue For
             End If
+
+            Dim radius As Double = cutoutDiameter / 2.0
+            Dim localCenterX As Double =
+                WingDefinition.GetRibLighteningCutoutCenterLocalX(station.SpanPosition, cutoutDefinition)
+
+            If Not IsCircularCutoutInsideRibRegion(localCenterX,
+                                                   radius,
+                                                   station.SpanPosition,
+                                                   ribProfileRegion) Then
+                Continue For
+            End If
+
+            Dim globalCenterX As Double =
+                WingDefinition.GetGlobalXAtSpanPosition(station.SpanPosition, localCenterX)
+            Dim cutoutCenter As AirfoilCoordinate =
+                ConvertGlobalPointToSketchPoint(globalCenterX,
+                                                station.SpanPosition,
+                                                WingDefinition.GetRibLighteningCutoutCenterZ(station.SpanPosition, cutoutDefinition),
+                                                sketchAxis)
+
+            CreateSketchCircle(sketchFactory, cutoutCenter, radius)
         Next
     End Sub
 
-    Private Function IsCircularCutoutInsideRibRegion(ByVal globalCenterX As Double,
+    Private Function IsCircularCutoutInsideRibRegion(ByVal localCenterX As Double,
                                                      ByVal radius As Double,
                                                      ByVal spanPosition As Double,
                                                      ByVal ribProfileRegion As RibProfileRegion) As Boolean
         Select Case ribProfileRegion
             Case RibProfileRegion.ForwardWingPanel
-                Return (globalCenterX + radius) <
+                Return (localCenterX + radius) <
                     (WingDefinition.GetAileronFixedPanelEndXAtSpanPosition(spanPosition) - 0.000001)
             Case Else
                 Return True
@@ -1514,9 +1654,9 @@ Friend Module WingGenerator
         Return clippedCoordinates
     End Function
 
-    Private Function GetAirfoilSurfacePointAtGlobalX(ByVal chordLength As Double,
-                                                     ByVal globalX As Double,
-                                                     ByVal upperSurface As Boolean) As AirfoilCoordinate
+    Private Function GetAirfoilSurfacePointAtLocalX(ByVal chordLength As Double,
+                                                    ByVal localX As Double,
+                                                    ByVal upperSurface As Boolean) As AirfoilCoordinate
         Dim airfoilCoordinates As List(Of AirfoilCoordinate) =
             NacaAirfoil.BuildCoordinates(chordLength,
                                          WingDefinition.PointCountPerSurface,
@@ -1530,13 +1670,13 @@ Friend Module WingGenerator
             Dim startPoint As AirfoilCoordinate = airfoilCoordinates(pointIndex)
             Dim endPoint As AirfoilCoordinate = airfoilCoordinates((pointIndex + 1) Mod airfoilCoordinates.Count)
 
-            If SegmentCrossesGlobalX(startPoint, endPoint, globalX) Then
-                intersectionZValues.Add(InterpolateAirfoilPointAtX(startPoint, endPoint, globalX).Y)
+            If SegmentCrossesLocalX(startPoint, endPoint, localX) Then
+                intersectionZValues.Add(InterpolateAirfoilPointAtX(startPoint, endPoint, localX).Y)
             End If
         Next
 
         If intersectionZValues.Count = 0 Then
-            Throw New InvalidOperationException("No " & GetWingAirfoilLabel() & " surface point was found at X = " & globalX.ToString() & " mm.")
+            Throw New InvalidOperationException("No " & GetWingAirfoilLabel() & " surface point was found at local X = " & localX.ToString() & " mm.")
         End If
 
         Dim surfaceZ As Double = intersectionZValues(0)
@@ -1549,7 +1689,7 @@ Friend Module WingGenerator
             End If
         Next
 
-        Return New AirfoilCoordinate(globalX, surfaceZ)
+        Return New AirfoilCoordinate(localX, surfaceZ)
     End Function
 
     Private Function BuildFixedWingOutboardSkinProfileCoordinates(ByVal chordLength As Double) As List(Of AirfoilCoordinate)
@@ -1578,12 +1718,12 @@ Friend Module WingGenerator
 
         For pointIndex As Integer = 0 To segmentCount
             Dim ratio As Double = CDbl(pointIndex) / CDbl(segmentCount)
-            Dim globalX As Double = chordLength * ratio
+            Dim localX As Double = chordLength * ratio
 
             AddAirfoilCoordinateIfDistinct(profileCoordinates,
-                                           GetAirfoilSurfacePointAtGlobalX(chordLength,
-                                                                          globalX,
-                                                                          upperSurface))
+                                           GetAirfoilSurfacePointAtLocalX(chordLength,
+                                                                         localX,
+                                                                         upperSurface))
         Next
 
         Return profileCoordinates
@@ -1601,22 +1741,22 @@ Friend Module WingGenerator
 
         For pointIndex As Integer = 0 To segmentCount
             Dim ratio As Double = CDbl(pointIndex) / CDbl(segmentCount)
-            Dim globalX As Double = startX + ((endX - startX) * ratio)
+            Dim localX As Double = startX + ((endX - startX) * ratio)
             AddAirfoilCoordinateIfDistinct(profileCoordinates,
-                                           GetAirfoilSurfacePointAtGlobalX(chordLength,
-                                                                          globalX,
-                                                                          True))
+                                           GetAirfoilSurfacePointAtLocalX(chordLength,
+                                                                         localX,
+                                                                         True))
         Next
 
         AddChordwiseCutEdgePoints(profileCoordinates, chordLength, endX, True, False)
 
         For pointIndex As Integer = segmentCount To 0 Step -1
             Dim ratio As Double = CDbl(pointIndex) / CDbl(segmentCount)
-            Dim globalX As Double = startX + ((endX - startX) * ratio)
+            Dim localX As Double = startX + ((endX - startX) * ratio)
             AddAirfoilCoordinateIfDistinct(profileCoordinates,
-                                           GetAirfoilSurfacePointAtGlobalX(chordLength,
-                                                                          globalX,
-                                                                           False))
+                                           GetAirfoilSurfacePointAtLocalX(chordLength,
+                                                                         localX,
+                                                                         False))
         Next
 
         AddChordwiseCutEdgePoints(profileCoordinates, chordLength, startX, False, True)
@@ -1663,13 +1803,13 @@ Friend Module WingGenerator
                                           ByVal startAtUpperSurface As Boolean,
                                           ByVal endAtUpperSurface As Boolean)
         Dim upperCutPoint As AirfoilCoordinate =
-            GetAirfoilSurfacePointAtGlobalX(chordLength,
-                                            cutX,
-                                            True)
+            GetAirfoilSurfacePointAtLocalX(chordLength,
+                                           cutX,
+                                           True)
         Dim lowerCutPoint As AirfoilCoordinate =
-            GetAirfoilSurfacePointAtGlobalX(chordLength,
-                                            cutX,
-                                            False)
+            GetAirfoilSurfacePointAtLocalX(chordLength,
+                                           cutX,
+                                           False)
         Dim cutSegmentCount As Integer = 12
         Dim startPoint As AirfoilCoordinate = If(startAtUpperSurface, upperCutPoint, lowerCutPoint)
         Dim endPoint As AirfoilCoordinate = If(endAtUpperSurface, upperCutPoint, lowerCutPoint)
@@ -1683,14 +1823,14 @@ Friend Module WingGenerator
         Next
     End Sub
 
-    Private Function SegmentCrossesGlobalX(ByVal startPoint As AirfoilCoordinate,
-                                           ByVal endPoint As AirfoilCoordinate,
-                                           ByVal globalX As Double) As Boolean
+    Private Function SegmentCrossesLocalX(ByVal startPoint As AirfoilCoordinate,
+                                          ByVal endPoint As AirfoilCoordinate,
+                                          ByVal localX As Double) As Boolean
         Dim minimumX As Double = Math.Min(startPoint.X, endPoint.X)
         Dim maximumX As Double = Math.Max(startPoint.X, endPoint.X)
 
-        Return globalX >= (minimumX - 0.000001) AndAlso
-            globalX <= (maximumX + 0.000001)
+        Return localX >= (minimumX - 0.000001) AndAlso
+            localX <= (maximumX + 0.000001)
     End Function
 
     Private Function IsPointInsideAileronClip(ByVal point As AirfoilCoordinate,
@@ -1966,9 +2106,11 @@ Friend Module WingGenerator
     Private Function ConvertGlobalXzToSketchPoint(ByVal airfoilPoint As AirfoilCoordinate,
                                                   ByVal spanPosition As Double,
                                                   ByVal sketchAxis As SketchAxisData) As AirfoilCoordinate
-        Return ConvertGlobalPointToSketchPoint(airfoilPoint.X,
+        Return ConvertGlobalPointToSketchPoint(WingDefinition.GetGlobalXAtSpanPosition(spanPosition,
+                                                                                       airfoilPoint.X),
                                                spanPosition,
-                                               airfoilPoint.Y,
+                                               WingDefinition.GetGlobalZAtSpanPosition(spanPosition,
+                                                                                       airfoilPoint.Y),
                                                sketchAxis)
     End Function
 

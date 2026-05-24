@@ -11,7 +11,7 @@ The CAD generation code is split across focused files in the `CAD` folder:
 ```text
 CAD/AircraftConfiguration.vb    Wing and tail configuration defaults
 CAD/GenerateAirfoil.vb          Public facade used by the UI button
-CAD/WingGenerator.vb            Stage 1 through Stage 4C wing generation
+CAD/WingGenerator.vb            Wing geometry generation
 CAD/WingDefinition.vb           Wing definition values derived from active configuration
 CAD/WingConfigurationValidator.vb Wing configuration validation rules
 CAD/TailConfigurationValidator.vb Tail configuration validation rules
@@ -30,17 +30,17 @@ GenerateAirfoil.Run(currentConfiguration.Wing)
 TailGenerator.Run(currentConfiguration.Tail)
 ```
 
-At the time of this note, `Run()` calls the Stage 4C physical rib, main spar, cutout, and aileron generator.
+At the time of this note, `Run()` calls the physical rib, main spar, cutout, and aileron generator.
 
 ## Current Implementation
 
 `GenerateAirfoil.vb` currently contains:
 
 - Public entry points only.
-- `Run()`, which delegates to Stage 4C.
-- Compatibility wrappers for Stage 1, Stage 2, Stage 3, Stage 4A, Stage 4B, Stage 4C, and the NACA 2412 test slice.
+- `Run()`, which delegates to the complete wing generator.
+- Compatibility wrappers for planform, airfoil stations, outer skin, physical ribs, ribs/main spar, complete wing, and the NACA 2412 test slice.
 
-The active workflow is Stage 4C.
+The active workflow is the complete wing generator with ribs, main spar, lightening cutouts, and ailerons.
 
 ## Wing Concept
 
@@ -52,7 +52,6 @@ The goal is a basic UAV wing model with:
 - Circular rib cutouts for spar clearance and weight reduction.
 - Two tail-style aileron control surfaces, one left and one right.
 - No twist.
-- No dihedral.
 - No skin thickness yet.
 - No aileron hinge hardware or joints yet.
 
@@ -67,6 +66,8 @@ Full span: 3.54365 m = 3543.65 mm
 Half span: 1771.825 mm
 Root chord: 0.586 m = 586 mm
 Tip chord: 0.374 m = 374 mm
+Sweep angle: 0 degrees by default, configurable from 0 to 30 degrees swept back only
+Dihedral angle: 0 degrees by default, configurable from 0 to 8 degrees upward only
 Airfoil: selected NACA 4-digit airfoil, default NACA 4415 at every station
 Rib thickness: 3 mm
 Ribs: 29 total by default
@@ -86,14 +87,14 @@ Rib spar cutout diameter: 31 mm
 Rib lightening cutouts:
 
 ```text
+Enabled: true by default
 Forward cutout: 15% chord, preferred diameter 22 mm
 Middle cutout: 50% chord, preferred diameter 34 mm
-Aft cutout: 70% chord, preferred diameter 22 mm
-Minimum edge margin to airfoil skin: 6 mm
-Minimum generated cutout diameter: 8 mm
+Aft cutout: 70% chord, preferred diameter 20 mm
+Internal validation margin to airfoil skin: 6 mm
 ```
 
-Cutout diameters are computed per station. If a rib is too thin for a preferred diameter, the cutout is reduced to preserve the minimum edge margin.
+The cutout enable flag, chord fractions, and preferred diameters are configurable and stored in presets. Cutout diameters are generated exactly as entered by the user. Validation checks the limiting tip rib against a fixed internal 6 mm skin margin and rejects a cutout that is too large instead of shrinking or omitting it. Sweep translates the cutout global X positions with each rib station leading edge; the cutout fit remains based on local chord and airfoil thickness.
 
 Rib distribution:
 
@@ -139,13 +140,20 @@ Y = span direction, from left tip through center to right tip
 Z = airfoil thickness direction
 ```
 
-The leading edge is straight and unswept:
+The leading edge is swept back by the configured sweep angle:
 
 ```text
-X = 0 at every span station
+LeadingEdgeX = tan(sweep angle) * absolute span position
 ```
 
-The taper is created only by reducing chord length toward the tips:
+The wing station is lifted by the configured dihedral angle:
+
+```text
+DihedralZ = tan(dihedral angle) * absolute span position
+GlobalZ = DihedralZ + local airfoil Z
+```
+
+The default sweep and dihedral angles are 0 degrees, so the default behavior keeps `X = 0` and `Z = local airfoil Z` at every span station. The taper is still created by reducing chord length toward the tips:
 
 ```text
 Center/root chord = 586 mm
@@ -154,7 +162,7 @@ Tip chord = 374 mm
 
 So the trailing edge moves forward toward each tip.
 
-The wing uses one selected NACA 4-digit airfoil at every station. Only the chord length changes along the span.
+The wing uses one selected NACA 4-digit airfoil at every station. Chord length changes with taper, and station Z changes with the configured dihedral angle.
 
 Default NACA 4415 parameters:
 
@@ -164,128 +172,73 @@ Maximum camber position: 0.4
 Maximum thickness: 0.15
 ```
 
-## Stage 1: Planform And Rib Stations
+## Planform And Profiles
 
-Stage 1 created reference geometry only:
+The planform and profile workflow creates:
 
-- Full-span straight leading edge.
+- Swept leading-edge reference lines meeting at the center station, or one full-span line at zero sweep.
 - Tapered trailing edge on left and right halves.
 - 29 chordwise rib station lines.
+- Selected NACA 4-digit airfoil profiles at the same rib stations.
+- A CATIA Multi-Section Surface through those profiles for the outer skin.
 
-This stage has been verified in CATIA.
+The rib station lines are useful visual scaffolding. They help confirm spacing, chord length, taper, sweep, dihedral, and leading-edge alignment. They may later be hidden or kept in a reference geometrical set.
 
-The rib station lines are currently useful visual scaffolding. They help confirm spacing, chord length, taper, and leading-edge alignment. They may later be hidden or kept in a reference geometrical set.
-
-## Stage 2: Airfoil Station Profiles
-
-Stage 2 adds selected NACA 4-digit airfoil profiles at the same rib stations.
-
-Current behavior:
-
-- Creates a new CATIA Part.
-- Creates a geometrical set for planform and rib station lines.
-- Creates a separate geometrical set for selected-airfoil station profiles.
-- Builds 29 airfoil station splines:
-  - 14 left side profiles.
-  - 1 center profile.
-  - 14 right side profiles.
-- Keeps the leading edge at `X = 0`.
-- Uses local chord length based on span position.
-- Places each profile in an X-Z airfoil plane at its Y station.
-
-## Stage 3: Outer Wing Skin
-
-Stage 3 creates the outer wing skin:
-
-- Use the selected-airfoil station profiles.
-- Create a CATIA Multi-Section Surface through those profiles.
-- Keep the skin as a surface with no thickness for now.
-
-Current behavior:
-
-- Creates a new CATIA Part.
-- Creates a geometrical set for planform and rib station lines.
-- Creates a geometrical set for selected-airfoil station profiles.
-- Creates a geometrical set for the outer wing skin.
-- Builds one lofted outer skin surface through the 29 profiles.
-- Uses a consistent profile closing point to help CATIA align the loft sections.
-
-Manual wrapper for this stage:
+Manual wrappers:
 
 ```vb
-CreateWingStage3OuterWingSkin()
+CreateWingPlanform()
+CreateWingAirfoilStations()
+CreateWingOuterWingSkin()
 ```
 
-## Stage 4A: Physical Ribs
+## Physical Ribs And Main Spar
 
-Stage 4A creates physical ribs:
+The rib and spar workflow creates:
 
-- Use the same 29 station shapes.
-- Create 3 mm solid rib plates centered on each station.
-- Keep each rib as a separate named CATIA body.
-- Keep the outer skin as a surface with no thickness.
-- Keep the Stage 1 planform, Stage 2 station profiles, and Stage 3 outer skin in the same generated part for reference.
+- 3 mm solid rib plates centered on each station.
+- One separate named CATIA body per rib.
+- One 30% chord hollow circular main spar.
+- One spar clearance hole in each rib.
+- Three circular lightening cutouts in each rib.
+- Planform, rib station, airfoil profile, skin, rib plane, and spar reference geometry in the same generated part for reference.
 
 Current behavior:
 
-- Creates a new CATIA Part.
-- Creates the planform and rib station reference geometry.
-- Creates the selected-airfoil station profiles.
-- Creates one lofted outer wing skin surface through those profiles.
 - Creates one mid-plane per rib station.
 - Creates one smooth closed rib sketch per station, with a polyline fallback if CATIA cannot create the 2D sketch spline.
 - Pads each rib sketch into a 3 mm centered solid rib body.
 - Converts each intended global X/Z rib point into CATIA sketch-local coordinates using the sketch's actual axis data. This avoids flipped or perpendicular ribs caused by CATIA's default `PlaneZX` local axis orientation.
-- Uses required CATIA updates for Stage 4A geometry so failures produce explicit errors instead of silently leaving a partial model.
-
-Manual wrapper for this stage:
-
-```vb
-CreateWingStage4APhysicalRibs()
-```
-
-## Stage 4B: Main Spar And Rib Cutouts
-
-Stage 4B is the previous active generator.
-
-It creates:
-
-- The Stage 1 planform and rib station reference geometry.
-- The Stage 2 selected-airfoil station profiles.
-- The Stage 3 outer wing skin surface.
-- The Stage 4A physical rib bodies.
-- One 30% chord hollow circular main spar.
-- One spar clearance hole in each rib.
-- Three circular lightening cutouts in each rib.
+- Uses required CATIA updates so failures produce explicit errors instead of silently leaving a partial model.
 
 Main spar behavior:
 
 - The spar follows 30% of local chord, so its X location changes with taper.
-- The spar center follows the selected airfoil mean camber line.
+- The spar center follows the selected airfoil mean camber line plus the configured dihedral rise.
 - The generated spar is modeled as a hollow circular tube with 30 mm outer diameter and 1.5 mm wall thickness.
 - The spar is generated as left and right spanwise rib features that meet at the center rib.
+- Rib spar cutout validation accounts for the combined sweep and dihedral projection of the spar through each rib plane.
 
 Rib cutout behavior:
 
 - Each rib sketch includes the spar clearance hole before the rib is padded.
 - Each rib sketch includes three lightening cutout circles before the rib is padded.
-- The cutouts are parameterized by chord fraction and diameter rules, not fixed coordinates.
-- The cutout centers follow the selected airfoil mean camber line at their chord fractions.
-- Cutout diameters automatically shrink if needed to keep the minimum edge margin.
+- The cutouts are parameterized by chord fraction and exact requested diameter, not fixed coordinates.
+- The cutout centers follow the selected airfoil mean camber line at their chord fractions plus the configured dihedral rise.
+- Validation rejects cutout diameters that cannot keep the fixed internal 6 mm airfoil-skin margin at the wing tip.
 
 This parameter structure is intended to stay compatible with a later Power Copy workflow. A future rib Power Copy can expose chord length, rib plane, spar position, spar diameter, and lightening cutout definitions as inputs.
 
-Manual wrapper for this stage:
+Manual wrappers:
 
 ```vb
-CreateWingStage4BPhysicalRibsAndMainSpar()
+CreateWingPhysicalRibs()
+CreateWingPhysicalRibsAndMainSpar()
 ```
 
-## Stage 4C: Tail-Style Ailerons
+## Tail-Style Ailerons
 
-Stage 4C is the current active generator.
-
-It creates everything from Stage 4B, then adds left and right aileron geometry modeled after the tail control-surface approach:
+The complete wing workflow adds left and right aileron geometry modeled after the tail control-surface approach:
 
 - The aileron span runs from the wing tip inward for the configured fraction of each semi-span.
 - The aileron reaches the outermost rib at the wing tip.
@@ -307,7 +260,7 @@ Rib behavior:
 Skin behavior:
 
 - The fixed wing skin remains zero-thickness loft surface geometry.
-- Stage 4C does not create one full wing skin over the aileron region.
+- The generator does not create one full wing skin over the aileron region.
 - The center/inboard fixed wing skin is one full-chord surface between the left and right synthetic aileron inner-boundary stations.
 - The left and right outboard fixed wing skins are separate closed loft surfaces from the leading edge to X = 261.8 mm.
 - The left and right aileron support surfaces are separate closed colored loft surfaces from X = 280.5 mm to the trailing edge.
@@ -315,19 +268,27 @@ Skin behavior:
 - The rear hinge spar is generated from closed airfoil slices between X = 261.8 mm and X = 273.02 mm.
 - The split profiles use constant-X stations, so CATIA is guided to keep the aileron collection parallel to the leading edge.
 - The aileron, outboard fixed skin, and rear hinge spar lofts include synthetic inner-boundary profiles because the configured span boundary is not required to land on a rib.
-- Stage 4C adds upper and lower reference curves for the fixed wing rear spar face, rear hinge spar aft face, aileron leading edge, and aileron inner/outer end cuts.
+- The generator adds upper and lower reference curves for the fixed wing rear spar face, rear hinge spar aft face, aileron leading edge, and aileron inner/outer end cuts.
 - The aileron skin/support surfaces do not sit on top of another full wing skin surface, so CATIA should not fade or flicker their color against an overlapping skin.
 - The fixed wing skin is not thickened yet, so there is no removed thick-skin material.
 
-Manual wrapper for this stage:
+Cleanup behavior:
+
+- The final wing model hides construction/reference geometrical sets after generation.
+- Hidden construction includes planform/rib station references, airfoil profile points/splines, split-skin profile points/splines inside visible skin sets, rib mid-planes, main spar references, aileron cut references, and rear hinge spar construction surfaces.
+- Sketches inside physical bodies are hidden after their pads, pockets, ribs, and close-surface features are created.
+- Final physical bodies, fixed wing skin surfaces, and aileron skin/support surfaces remain visible.
+- The cleanup is non-destructive so the CATIA feature tree keeps its parametric dependencies.
+
+Manual wrapper:
 
 ```vb
-CreateWingStage4CPhysicalRibsMainSparAndAilerons()
+CreateWingPhysicalRibsMainSparAndAilerons()
 ```
 
 ## Verification Checklist
 
-When running the current Stage 4C code in CATIA, verify:
+When running the current complete wing code in CATIA, verify:
 
 - Full span is 3543.65 mm.
 - Center chord is 586 mm.
@@ -337,14 +298,14 @@ When running the current Stage 4C code in CATIA, verify:
 - There are 29 rib stations.
 - Every station profile uses the selected wing NACA 4-digit airfoil.
 - Profiles are oriented with span along Y and thickness along Z.
-- Stage 4C creates separate fixed wing and aileron surfaces instead of one full wing skin surface over the aileron span.
+- The generator creates separate fixed wing and aileron surfaces instead of one full wing skin surface over the aileron span.
 - The fixed wing skin has no solid thickness yet.
 - There are 29 physical rib bodies across 29 rib stations.
 - Each rib section is 3 mm thick in the span direction.
 - The ribs sit at the same stations as the airfoil profiles.
 - Full and forward rib sections have one 31 mm main spar clearance hole when the circular cutout fits fully inside that section.
 - Full and split rib sections keep lightening cutouts only when each circular cutout fits fully inside the generated rib section.
-- The lightening cutouts are positioned at 15%, 50%, and 70% chord.
+- The lightening cutouts are positioned at 15%, 50%, and 70% chord by default.
 - The lightening cutouts remain inside the airfoil profile on tip ribs.
 - The main spar is a hollow circular tube at 30% local chord.
 - The main spar passes through the rib spar holes.
@@ -358,3 +319,4 @@ When running the current Stage 4C code in CATIA, verify:
 - The aileron body starts at constant X = 280.5 mm and reaches the local trailing edge.
 - Ribs inside the aileron region, currently Rib_09 through Rib_14 on each side, are trimmed to forward wing rib bodies only; no aft rib leftovers are generated.
 - The aileron surfaces and physical aileron solids are visible as separate orange geometry without a full skin underneath them.
+- Construction/reference geometry and sketches are hidden after generation; only the final skin surfaces and physical parts should remain visible.

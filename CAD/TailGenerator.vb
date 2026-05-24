@@ -23,13 +23,13 @@ Public Class TailGenerator
     End Sub
 
     Private Shared Sub ReportTailStep(ByVal progressReporter As IGenerationProgressReporter,
-                                      ByVal stageName As String,
+                                      ByVal stepName As String,
                                       ByVal message As String,
                                       ByVal currentStep As Integer,
                                       ByVal totalSteps As Integer)
         GenerationProgress.Report(progressReporter,
                                   GenerationProgressUpdate.CreateStep(TailOperationName,
-                                                                      stageName,
+                                                                      stepName,
                                                                       message,
                                                                       currentStep,
                                                                       totalSteps))
@@ -325,6 +325,10 @@ Public Class TailGenerator
         WrapSkin(hybridShapeFactory, skinSet, activePart, vertMainSketches, "Vertical_Main_Skin")
 
         ReportTailStep(activeProgressReporter, "Final update", "Updating CATIA part.", 10, totalSteps)
+        HideTailConstructionGeometry(partDoc,
+                                     activePart,
+                                     planeSet,
+                                     skinSet)
         activePart.Update()
         ReportTailCompleted(activeProgressReporter)
         MessageBox.Show("Generation Complete! Rudder clearance added successfully.", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information)
@@ -337,6 +341,15 @@ Public Class TailGenerator
     ' =====================================================
     ' ALL HELPER METHODS MUST NOW BE SHARED AS WELL
     ' =====================================================
+    Private Shared Sub HideTailConstructionGeometry(ByVal partDocument As PartDocument,
+                                                    ByVal activePart As Part,
+                                                    ByVal planeSet As HybridBody,
+                                                    ByVal skinSet As HybridBody)
+        TryHideObject(partDocument, planeSet)
+        TryHideSketchesInBodies(partDocument, activePart)
+        TryHideHybridShapesByNameEnding(partDocument, skinSet, "_Surface")
+    End Sub
+
     Private Shared Sub ObliterateRudderTriangle(activePart As Part, planeRef As Reference, tailOffset As Double, chord As Double)
         Dim sketch As Sketch = activePart.MainBody.Sketches.Add(planeRef)
         sketch.Name = "Triangle_Cut_Sketch"

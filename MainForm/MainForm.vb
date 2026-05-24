@@ -15,11 +15,19 @@ Public Class MainForm
     Private numWingFullSpan As NumericUpDown
     Private numWingRootChord As NumericUpDown
     Private numWingTipChord As NumericUpDown
+    Private numWingSweepAngleDegrees As NumericUpDown
+    Private numWingDihedralAngleDegrees As NumericUpDown
     Private cmbWingAirfoil As ComboBox
     Private numWingPointCountPerSurface As NumericUpDown
     Private numWingRibCountPerSide As NumericUpDown
     Private numWingRibThickness As NumericUpDown
     Private chkWingLighteningCutoutsEnabled As CheckBox
+    Private numWingForwardLighteningCutoutChordFraction As NumericUpDown
+    Private numWingForwardLighteningCutoutPreferredDiameter As NumericUpDown
+    Private numWingMiddleLighteningCutoutChordFraction As NumericUpDown
+    Private numWingMiddleLighteningCutoutPreferredDiameter As NumericUpDown
+    Private numWingAftLighteningCutoutChordFraction As NumericUpDown
+    Private numWingAftLighteningCutoutPreferredDiameter As NumericUpDown
     Private numWingMainSparChordFraction As NumericUpDown
     Private numWingMainSparOuterDiameter As NumericUpDown
     Private numWingMainSparWallThickness As NumericUpDown
@@ -339,6 +347,7 @@ Public Class MainForm
         AddGroupToGrid(contentGrid, CreateWingRibsGroup(), 0, 1)
         AddGroupToGrid(contentGrid, CreateWingSparGroup(), 1, 1)
         AddGroupToGrid(contentGrid, CreateWingAileronGroup(), 0, 2)
+        AddGroupToGrid(contentGrid, CreateWingLighteningCutoutsGroup(), 1, 2)
 
         tabPage.Controls.Add(contentGrid)
         Return tabPage
@@ -358,15 +367,19 @@ Public Class MainForm
     End Function
 
     Private Function CreateWingPlanformGroup() As GroupBox
-        Dim fieldLayout As TableLayoutPanel = CreateFieldLayout(3)
+        Dim fieldLayout As TableLayoutPanel = CreateFieldLayout(5)
 
         numWingFullSpan = CreateNumericBox(500D, 10000D, 2, 10D)
         numWingRootChord = CreateNumericBox(50D, 2000D, 2, 5D)
         numWingTipChord = CreateNumericBox(50D, 2000D, 2, 5D)
+        numWingSweepAngleDegrees = CreateNumericBox(0D, 30D, 2, 0.5D)
+        numWingDihedralAngleDegrees = CreateNumericBox(0D, 8D, 2, 0.25D)
 
         AddField(fieldLayout, 0, "Full span (mm)", numWingFullSpan)
         AddField(fieldLayout, 1, "Root chord (mm)", numWingRootChord)
         AddField(fieldLayout, 2, "Tip chord (mm)", numWingTipChord)
+        AddField(fieldLayout, 3, "Sweep angle (deg)", numWingSweepAngleDegrees)
+        AddField(fieldLayout, 4, "Dihedral angle (deg)", numWingDihedralAngleDegrees)
 
         Return CreateGroupBox("Wing Planform", fieldLayout)
     End Function
@@ -411,6 +424,26 @@ Public Class MainForm
         AddField(fieldLayout, 3, "Rib cutout diameter (mm)", numWingMainSparRibCutoutDiameter)
 
         Return CreateGroupBox("Wing Main Spar", fieldLayout)
+    End Function
+
+    Private Function CreateWingLighteningCutoutsGroup() As GroupBox
+        Dim fieldLayout As TableLayoutPanel = CreateFieldLayout(6)
+
+        numWingForwardLighteningCutoutChordFraction = CreateNumericBox(0.05D, 0.85D, 2, 0.01D)
+        numWingForwardLighteningCutoutPreferredDiameter = CreateNumericBox(1D, 200D, 2, 1D)
+        numWingMiddleLighteningCutoutChordFraction = CreateNumericBox(0.05D, 0.85D, 2, 0.01D)
+        numWingMiddleLighteningCutoutPreferredDiameter = CreateNumericBox(1D, 200D, 2, 1D)
+        numWingAftLighteningCutoutChordFraction = CreateNumericBox(0.05D, 0.85D, 2, 0.01D)
+        numWingAftLighteningCutoutPreferredDiameter = CreateNumericBox(1D, 200D, 2, 1D)
+
+        AddField(fieldLayout, 0, "Forward chord fraction", numWingForwardLighteningCutoutChordFraction)
+        AddField(fieldLayout, 1, "Forward diameter (mm)", numWingForwardLighteningCutoutPreferredDiameter)
+        AddField(fieldLayout, 2, "Middle chord fraction", numWingMiddleLighteningCutoutChordFraction)
+        AddField(fieldLayout, 3, "Middle diameter (mm)", numWingMiddleLighteningCutoutPreferredDiameter)
+        AddField(fieldLayout, 4, "Aft chord fraction", numWingAftLighteningCutoutChordFraction)
+        AddField(fieldLayout, 5, "Aft diameter (mm)", numWingAftLighteningCutoutPreferredDiameter)
+
+        Return CreateGroupBox("Wing Lightening Cutouts", fieldLayout)
     End Function
 
     Private Function CreateWingAileronGroup() As GroupBox
@@ -625,11 +658,20 @@ Public Class MainForm
         SetNumericValue(numWingFullSpan, wing.FullSpan)
         SetNumericValue(numWingRootChord, wing.RootChord)
         SetNumericValue(numWingTipChord, wing.TipChord)
+        SetNumericValue(numWingSweepAngleDegrees, wing.SweepAngleDegrees)
+        SetNumericValue(numWingDihedralAngleDegrees, wing.DihedralAngleDegrees)
         cmbWingAirfoil.Text = wing.Airfoil.NacaCode
         SetNumericValue(numWingPointCountPerSurface, wing.PointCountPerSurface)
         SetNumericValue(numWingRibCountPerSide, wing.Ribs.CountPerSide)
         SetNumericValue(numWingRibThickness, wing.Ribs.Thickness)
         chkWingLighteningCutoutsEnabled.Checked = wing.Ribs.LighteningCutoutsEnabled
+        wing.Ribs.EnsureLighteningCutoutSlots()
+        SetNumericValue(numWingForwardLighteningCutoutChordFraction, wing.Ribs.GetForwardLighteningCutout().ChordFraction)
+        SetNumericValue(numWingForwardLighteningCutoutPreferredDiameter, wing.Ribs.GetForwardLighteningCutout().PreferredDiameter)
+        SetNumericValue(numWingMiddleLighteningCutoutChordFraction, wing.Ribs.GetMiddleLighteningCutout().ChordFraction)
+        SetNumericValue(numWingMiddleLighteningCutoutPreferredDiameter, wing.Ribs.GetMiddleLighteningCutout().PreferredDiameter)
+        SetNumericValue(numWingAftLighteningCutoutChordFraction, wing.Ribs.GetAftLighteningCutout().ChordFraction)
+        SetNumericValue(numWingAftLighteningCutoutPreferredDiameter, wing.Ribs.GetAftLighteningCutout().PreferredDiameter)
         SetNumericValue(numWingMainSparChordFraction, wing.MainSpar.ChordFraction)
         SetNumericValue(numWingMainSparOuterDiameter, wing.MainSpar.OuterDiameter)
         SetNumericValue(numWingMainSparWallThickness, wing.MainSpar.WallThickness)
@@ -794,12 +836,20 @@ Public Class MainForm
         wing.FullSpan = GetDoubleValue(numWingFullSpan)
         wing.RootChord = GetDoubleValue(numWingRootChord)
         wing.TipChord = GetDoubleValue(numWingTipChord)
+        wing.SweepAngleDegrees = GetDoubleValue(numWingSweepAngleDegrees)
+        wing.DihedralAngleDegrees = GetDoubleValue(numWingDihedralAngleDegrees)
         wing.Airfoil = GetAirfoilValue(cmbWingAirfoil)
         wing.PointCountPerSurface = GetIntegerValue(numWingPointCountPerSurface)
 
         wing.Ribs.CountPerSide = GetIntegerValue(numWingRibCountPerSide)
         wing.Ribs.Thickness = GetDoubleValue(numWingRibThickness)
         wing.Ribs.LighteningCutoutsEnabled = chkWingLighteningCutoutsEnabled.Checked
+        wing.Ribs.GetForwardLighteningCutout().ChordFraction = GetDoubleValue(numWingForwardLighteningCutoutChordFraction)
+        wing.Ribs.GetForwardLighteningCutout().PreferredDiameter = GetDoubleValue(numWingForwardLighteningCutoutPreferredDiameter)
+        wing.Ribs.GetMiddleLighteningCutout().ChordFraction = GetDoubleValue(numWingMiddleLighteningCutoutChordFraction)
+        wing.Ribs.GetMiddleLighteningCutout().PreferredDiameter = GetDoubleValue(numWingMiddleLighteningCutoutPreferredDiameter)
+        wing.Ribs.GetAftLighteningCutout().ChordFraction = GetDoubleValue(numWingAftLighteningCutoutChordFraction)
+        wing.Ribs.GetAftLighteningCutout().PreferredDiameter = GetDoubleValue(numWingAftLighteningCutoutPreferredDiameter)
 
         wing.MainSpar.ChordFraction = GetDoubleValue(numWingMainSparChordFraction)
         wing.MainSpar.OuterDiameter = GetDoubleValue(numWingMainSparOuterDiameter)
