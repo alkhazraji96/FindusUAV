@@ -1,7 +1,9 @@
+Imports System.Collections.Generic
 Imports System.Runtime.InteropServices
 
 Friend Module CatiaInterop
     Private Const CatVisPropertyNoShow As Integer = 1
+    Private Const CatiaSelectionBatchSize As Integer = 250
 
     Friend Function GetOrCreateCatiaApplication() As Object
         Try
@@ -49,6 +51,10 @@ Friend Module CatiaInterop
         Catch
         End Try
     End Sub
+
+    Friend Function SuspendCatiaDisplayRefresh(ByVal catiaApplication As Object) As IDisposable
+        Return New CatiaDisplayRefreshScope(catiaApplication)
+    End Function
 
     Friend Sub TryUpdateObject(ByVal part As Object, ByVal partObject As Object)
         Try
@@ -140,14 +146,78 @@ Friend Module CatiaInterop
         TrySetObjectShowState(partDocument, catiaObject, CatVisPropertyNoShow)
     End Sub
 
+    Friend Sub TryHideObjects(ByVal partDocument As Object,
+                              ByVal catiaObjects As IEnumerable(Of Object))
+        If partDocument Is Nothing OrElse catiaObjects Is Nothing Then
+            Return
+        End If
+
+        Dim objectsToHide As New List(Of Object)()
+
+        For Each catiaObject As Object In catiaObjects
+            If catiaObject IsNot Nothing Then
+                objectsToHide.Add(catiaObject)
+            End If
+        Next
+
+        If objectsToHide.Count <= 0 Then
+            Return
+        End If
+
+        Try
+            Dim selection As Object = partDocument.Selection
+
+            For startIndex As Integer = 0 To objectsToHide.Count - 1 Step CatiaSelectionBatchSize
+                Try
+                    selection.Clear()
+
+                    Dim selectedCount As Integer = 0
+                    Dim endIndex As Integer = Math.Min(objectsToHide.Count - 1,
+                                                       startIndex + CatiaSelectionBatchSize - 1)
+
+                    For objectIndex As Integer = startIndex To endIndex
+                        Try
+                            selection.Add(objectsToHide(objectIndex))
+                            selectedCount += 1
+                        Catch
+                        End Try
+                    Next
+
+                    If selectedCount > 0 Then
+                        selection.VisProperties.SetShow(CatVisPropertyNoShow)
+                    End If
+                Catch
+                    For objectIndex As Integer = startIndex To Math.Min(objectsToHide.Count - 1,
+                                                                        startIndex + CatiaSelectionBatchSize - 1)
+                        TrySetObjectShowState(partDocument,
+                                              objectsToHide(objectIndex),
+                                              CatVisPropertyNoShow)
+                    Next
+                Finally
+                    Try
+                        selection.Clear()
+                    Catch
+                    End Try
+                End Try
+            Next
+        Catch
+            For Each catiaObject As Object In objectsToHide
+                TrySetObjectShowState(partDocument, catiaObject, CatVisPropertyNoShow)
+            Next
+        End Try
+    End Sub
+
     Friend Sub TryHideSketchesInBodies(ByVal partDocument As Object,
                                        ByVal part As Object)
         Try
             Dim bodies As Object = part.Bodies
+            Dim sketchesToHide As New List(Of Object)()
 
             For bodyIndex As Integer = 1 To CInt(bodies.Count)
-                TryHideSketchesInBody(partDocument, bodies.Item(bodyIndex))
+                TryCollectSketchesInBody(sketchesToHide, bodies.Item(bodyIndex))
             Next
+
+            TryHideObjects(partDocument, sketchesToHide)
         Catch
         End Try
     End Sub
@@ -161,15 +231,18 @@ Friend Module CatiaInterop
 
         Try
             Dim hybridShapes As Object = hybridBody.HybridShapes
+            Dim shapesToHide As New List(Of Object)()
 
             For shapeIndex As Integer = 1 To CInt(hybridShapes.Count)
                 Dim hybridShape As Object = hybridShapes.Item(shapeIndex)
                 Dim hybridShapeName As String = TryGetCatiaObjectName(hybridShape)
 
                 If hybridShapeName.EndsWith(nameSuffix, StringComparison.OrdinalIgnoreCase) Then
-                    TryHideObject(partDocument, hybridShape)
+                    shapesToHide.Add(hybridShape)
                 End If
             Next
+
+            TryHideObjects(partDocument, shapesToHide)
         Catch
         End Try
     End Sub
@@ -191,13 +264,17 @@ Friend Module CatiaInterop
         End Try
     End Sub
 
-    Private Sub TryHideSketchesInBody(ByVal partDocument As Object,
-                                      ByVal body As Object)
+    Private Sub TryCollectSketchesInBody(ByVal sketchesToHide As List(Of Object),
+                                         ByVal body As Object)
+        If sketchesToHide Is Nothing Then
+            Return
+        End If
+
         Try
             Dim sketches As Object = body.Sketches
 
             For sketchIndex As Integer = 1 To CInt(sketches.Count)
-                TryHideObject(partDocument, sketches.Item(sketchIndex))
+                sketchesToHide.Add(sketches.Item(sketchIndex))
             Next
         Catch
         End Try
@@ -211,29 +288,64 @@ Friend Module CatiaInterop
         End Try
     End Function
 
+    Private NotInheritable Class CatiaDisplayRefreshScope
+        Implements IDisposable
+
+        Private ReadOnly catiaApplication As Object
+        Private ReadOnly originalRefreshDisplay As Boolean
+        Private ReadOnly hasOriginalRefreshDisplay As Boolean
+        Private disposed As Boolean
+
+        Friend Sub New(ByVal catiaApplication As Object)
+            Me.catiaApplication = catiaApplication
+
+            If catiaApplication Is Nothing Then
+                Return
+            End If
+
+            Try
+                originalRefreshDisplay = CBool(catiaApplication.RefreshDisplay)
+                hasOriginalRefreshDisplay = True
+            Catch
+            End Try
+
+            Try
+                catiaApplication.RefreshDisplay = False
+            Catch
+            End Try
+        End Sub
+
+        Public Sub Dispose() Implements IDisposable.Dispose
+            If disposed Then
+                Return
+            End If
+
+            disposed = True
+
+            If catiaApplication Is Nothing Then
+                Return
+            End If
+
+            Try
+                catiaApplication.RefreshDisplay = If(hasOriginalRefreshDisplay,
+                                                     originalRefreshDisplay,
+                                                     True)
+            Catch
+            End Try
+        End Sub
+    End Class
+
     Friend Sub RequireCenteredPad(ByVal pad As Object,
                                   ByVal thickness As Double,
                                   ByVal context As String)
         Dim halfThickness As Double = thickness / 2.0
-        Dim symmetricException As Exception = Nothing
-
-        Try
-            pad.FirstLimit.Dimension.Value = halfThickness
-            pad.IsSymmetric = True
-            Return
-        Catch ex As Exception
-            symmetricException = ex
-        End Try
 
         Try
             pad.FirstLimit.Dimension.Value = halfThickness
             pad.SecondLimit.Dimension.Value = halfThickness
             Return
         Catch ex As Exception
-            Dim innerException As Exception = If(symmetricException IsNot Nothing,
-                                                symmetricException,
-                                                ex)
-            Throw New InvalidOperationException("CATIA could not center " & context & " to " & thickness.ToString() & " mm thickness.", innerException)
+            Throw New InvalidOperationException("CATIA could not center " & context & " to " & thickness.ToString() & " mm thickness.", ex)
         End Try
     End Sub
 

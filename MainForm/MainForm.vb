@@ -37,6 +37,7 @@ Public Class MainForm
     Private numTailPointCountPerSurface As NumericUpDown
     Private numTailDistanceOffset As NumericUpDown
     Private numTailRibThickness As NumericUpDown
+    Private chkTailLighteningCutoutsEnabled As CheckBox
     Private numTailMainSparDiameter As NumericUpDown
     Private numTailRudderClearance As NumericUpDown
     Private numHorizontalTailChord As NumericUpDown
@@ -70,7 +71,7 @@ Public Class MainForm
 
             SaveLastUsedConfiguration(currentConfiguration)
             BeginGeneration("Generating wing...")
-            GenerateAirfoil.Run(currentConfiguration.Wing, CreateUiProgressReporter())
+            WingGenerationFacade.Run(currentConfiguration.Wing, CreateUiProgressReporter())
         Catch ex As Exception
             SetGenerationFailed(ex.Message)
             ShowGenerationError(ex)
@@ -402,6 +403,7 @@ Public Class MainForm
         numWingRibCountPerSide = CreateIntegerBox(2, 80)
         numWingRibThickness = CreateNumericBox(0.5D, 20D, 2, 0.5D)
         chkWingLighteningCutoutsEnabled = CreateCheckBox()
+        AddHandler chkWingLighteningCutoutsEnabled.CheckedChanged, AddressOf chkWingLighteningCutoutsEnabled_CheckedChanged
 
         AddField(fieldLayout, 0, "Rib count per side", numWingRibCountPerSide)
         AddField(fieldLayout, 1, "Rib thickness (mm)", numWingRibThickness)
@@ -456,19 +458,21 @@ Public Class MainForm
     End Function
 
     Private Function CreateTailStructureGroup() As GroupBox
-        Dim fieldLayout As TableLayoutPanel = CreateFieldLayout(5)
+        Dim fieldLayout As TableLayoutPanel = CreateFieldLayout(6)
 
         numTailDistanceOffset = CreateNumericBox(0D, 10000D, 2, 25D)
         numTailPointCountPerSurface = CreateIntegerBox(15, 121)
         numTailRibThickness = CreateNumericBox(0.5D, 20D, 2, 0.5D)
+        chkTailLighteningCutoutsEnabled = CreateCheckBox()
         numTailMainSparDiameter = CreateNumericBox(1D, 100D, 2, 0.5D)
         numTailRudderClearance = CreateNumericBox(0D, 1500D, 2, 1D)
 
         AddField(fieldLayout, 0, "Distance offset (mm)", numTailDistanceOffset)
         AddField(fieldLayout, 1, "Point count per surface", numTailPointCountPerSurface)
         AddField(fieldLayout, 2, "Rib thickness (mm)", numTailRibThickness)
-        AddField(fieldLayout, 3, "Main spar diameter (mm)", numTailMainSparDiameter)
-        AddField(fieldLayout, 4, "Rudder clearance (mm)", numTailRudderClearance)
+        AddField(fieldLayout, 3, "Lightening cutouts enabled", chkTailLighteningCutoutsEnabled)
+        AddField(fieldLayout, 4, "Main spar diameter (mm)", numTailMainSparDiameter)
+        AddField(fieldLayout, 5, "Rudder clearance (mm)", numTailRudderClearance)
 
         Return CreateGroupBox("Tail Structure", fieldLayout)
     End Function
@@ -611,6 +615,37 @@ Public Class MainForm
         Return checkBox
     End Function
 
+    Private Sub chkWingLighteningCutoutsEnabled_CheckedChanged(sender As Object, e As EventArgs)
+        UpdateWingLighteningCutoutInputsEnabled()
+    End Sub
+
+    Private Sub UpdateWingLighteningCutoutInputsEnabled()
+        Dim enabled As Boolean =
+            chkWingLighteningCutoutsEnabled IsNot Nothing AndAlso
+            chkWingLighteningCutoutsEnabled.Checked
+
+        SetInputControlsEnabled(enabled,
+                                numWingForwardLighteningCutoutChordFraction,
+                                numWingForwardLighteningCutoutPreferredDiameter,
+                                numWingMiddleLighteningCutoutChordFraction,
+                                numWingMiddleLighteningCutoutPreferredDiameter,
+                                numWingAftLighteningCutoutChordFraction,
+                                numWingAftLighteningCutoutPreferredDiameter)
+    End Sub
+
+    Private Sub SetInputControlsEnabled(ByVal enabled As Boolean,
+                                        ByVal ParamArray controls() As Control)
+        If controls Is Nothing Then
+            Return
+        End If
+
+        For Each inputControl As Control In controls
+            If inputControl IsNot Nothing Then
+                inputControl.Enabled = enabled
+            End If
+        Next
+    End Sub
+
     Private Sub LoadInitialConfigurationValues()
         Dim storedConfiguration As AircraftConfiguration = Nothing
         Dim failureMessage As String = String.Empty
@@ -672,6 +707,7 @@ Public Class MainForm
         SetNumericValue(numWingMiddleLighteningCutoutPreferredDiameter, wing.Ribs.GetMiddleLighteningCutout().PreferredDiameter)
         SetNumericValue(numWingAftLighteningCutoutChordFraction, wing.Ribs.GetAftLighteningCutout().ChordFraction)
         SetNumericValue(numWingAftLighteningCutoutPreferredDiameter, wing.Ribs.GetAftLighteningCutout().PreferredDiameter)
+        UpdateWingLighteningCutoutInputsEnabled()
         SetNumericValue(numWingMainSparChordFraction, wing.MainSpar.ChordFraction)
         SetNumericValue(numWingMainSparOuterDiameter, wing.MainSpar.OuterDiameter)
         SetNumericValue(numWingMainSparWallThickness, wing.MainSpar.WallThickness)
@@ -681,6 +717,7 @@ Public Class MainForm
         SetNumericValue(numTailDistanceOffset, tail.DistanceOffset)
         SetNumericValue(numTailPointCountPerSurface, tail.PointCountPerSurface)
         SetNumericValue(numTailRibThickness, tail.RibThickness)
+        chkTailLighteningCutoutsEnabled.Checked = tail.LighteningCutoutsEnabled
         SetNumericValue(numTailMainSparDiameter, tail.MainSpar.MainSparDiameter)
         SetNumericValue(numTailRudderClearance, tail.RudderClearance)
 
@@ -867,6 +904,7 @@ Public Class MainForm
         tail.DistanceOffset = GetDoubleValue(numTailDistanceOffset)
         tail.PointCountPerSurface = GetIntegerValue(numTailPointCountPerSurface)
         tail.RibThickness = GetDoubleValue(numTailRibThickness)
+        tail.LighteningCutoutsEnabled = chkTailLighteningCutoutsEnabled.Checked
         tail.MainSpar.MainSparDiameter = GetDoubleValue(numTailMainSparDiameter)
         tail.RudderClearance = GetDoubleValue(numTailRudderClearance)
 
@@ -977,7 +1015,7 @@ Public Class MainForm
     Private Sub SetGenerationStatus(ByVal statusText As String)
         If lblGenerationStatus IsNot Nothing Then
             lblGenerationStatus.Text = statusText
-            lblGenerationStatus.Refresh()
+            lblGenerationStatus.Update()
         End If
     End Sub
 
@@ -1119,14 +1157,12 @@ Public Class MainForm
 
     Private Sub RefreshGenerationProgressUi()
         If lblGenerationStatus IsNot Nothing Then
-            lblGenerationStatus.Refresh()
+            lblGenerationStatus.Update()
         End If
 
         If progressGeneration IsNot Nothing Then
-            progressGeneration.Refresh()
+            progressGeneration.Update()
         End If
-
-        Application.DoEvents()
     End Sub
 
     Private Sub ShowGenerationError(ByVal ex As Exception)

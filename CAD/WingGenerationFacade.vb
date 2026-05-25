@@ -1,4 +1,4 @@
-Public Class GenerateAirfoil
+Public Class WingGenerationFacade
     Public Sub Generate()
         Run()
     End Sub
@@ -66,9 +66,4 @@ Public Class GenerateAirfoil
         Return WingGenerator.CreatePhysicalRibsMainSparAndAilerons(configuration, progressReporter)
     End Function
 
-    Public Shared Function CreateNaca2412Part(Optional ByVal chordLength As Double = 100.0,
-                                              Optional ByVal pointCountPerSurface As Integer = 81,
-                                              Optional ByVal padLength As Double = 3.0) As Object
-        Return Naca2412SliceGenerator.CreatePart(chordLength, pointCountPerSurface, padLength)
-    End Function
 End Class
