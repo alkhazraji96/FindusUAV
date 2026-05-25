@@ -231,6 +231,10 @@ Friend Module TailConfigurationValidator
 
     Private Sub ValidateLighteningCutouts(ByVal configuration As TailConfiguration,
                                           ByVal result As ConfigurationValidationResult)
+        If Not configuration.LighteningCutoutsEnabled Then
+            Return
+        End If
+
         If configuration.HorizontalStabilizer IsNot Nothing AndAlso
             configuration.HorizontalStabilizer.RibCount > 2 Then
             ValidateTailCutoutPatternFitsAirfoil(result,

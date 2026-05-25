@@ -78,19 +78,42 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="CAD\AircraftConfiguration.vb" />
+    <Compile Include="CAD\AirfoilConfiguration.vb" />
     <Compile Include="CAD\AirfoilCoordinate.vb" />
     <Compile Include="CAD\CatiaInterop.vb" />
-    <Compile Include="CAD\ConfigurationValidationResult.vb" />
+    <Compile Include="CAD\ConfigurationPresetCommandHelpers.vb" />
+    <Compile Include="CAD\ConfigurationPresetMapper.vb" />
     <Compile Include="CAD\ConfigurationPresetRepository.vb" />
+    <Compile Include="CAD\ConfigurationPresetSchema.vb" />
+    <Compile Include="CAD\ConfigurationPresetSql.vb" />
+    <Compile Include="CAD\ConfigurationValidationResult.vb" />
+    <Compile Include="CAD\ControlSurfaceConfiguration.vb" />
     <Compile Include="CAD\GenerationProgress.vb" />
-    <Compile Include="CAD\GenerateAirfoil.vb" />
-    <Compile Include="CAD\Naca2412SliceGenerator.vb" />
+    <Compile Include="CAD\HorizontalTailConfiguration.vb" />
     <Compile Include="CAD\NacaAirfoil.vb" />
     <Compile Include="CAD\NacaAirfoilParser.vb" />
+    <Compile Include="CAD\RibLighteningCutoutConfiguration.vb" />
+    <Compile Include="CAD\TailAirfoilProfileGenerator.vb" />
+    <Compile Include="CAD\TailConfiguration.vb" />
     <Compile Include="CAD\TailConfigurationValidator.vb" />
+    <Compile Include="CAD\TailGeometryBuilder.vb" />
+    <Compile Include="CAD\TailGenerator.vb" />
+    <Compile Include="CAD\TailPoint3D.vb" />
+    <Compile Include="CAD\TailSparConfiguration.vb" />
+    <Compile Include="CAD\VerticalTailConfiguration.vb" />
+    <Compile Include="CAD\WingAirfoilProfileBuilder.vb" />
+    <Compile Include="CAD\WingConfiguration.vb" />
     <Compile Include="CAD\WingConfigurationValidator.vb" />
     <Compile Include="CAD\WingDefinition.vb" />
+    <Compile Include="CAD\WingGenerationFacade.vb" />
+    <Compile Include="CAD\WingGenerationNames.vb" />
     <Compile Include="CAD\WingGenerator.vb" />
+    <Compile Include="CAD\WingMainSparGeometry.vb" />
+    <Compile Include="CAD\WingRibConfiguration.vb" />
+    <Compile Include="CAD\WingRibGeometry.vb" />
+    <Compile Include="CAD\WingSketchGeometry.vb" />
+    <Compile Include="CAD\WingSkinGeometry.vb" />
+    <Compile Include="CAD\WingSparConfiguration.vb" />
     <Compile Include="CAD\WingStation.vb" />
     <Compile Include="MainForm\MainForm.vb">
       <SubType>Form</SubType>
@@ -114,7 +137,6 @@
       <DependentUpon>Settings.settings</DependentUpon>
       <DesignTimeSharedInput>True</DesignTimeSharedInput>
     </Compile>
-    <Compile Include="CAD\TailGenerator.vb" />
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="MainForm\MainForm.resx">
